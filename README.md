@@ -38,6 +38,9 @@ views, zero language tokens, chunk 50, action dimension 32, ten flow steps.
 `--chunk-size 63` matches the shape highlighted in realtime-vla's performance
 reports; it is not OpenPI's usual chunk length. Empty prompt means literally
 zero language tokens, not a tokenizer's encoding of an empty string.
+The pinned realtime-vla revision selects its specialized optimized path only on
+SM120 with two/three views, chunk 63, and no prompt. B200 uses its general
+Triton path; JSON records the upstream optimization flag.
 
 ## Measurement contract
 
@@ -77,6 +80,15 @@ compiled/captured result against eager. The upstream comparison restores both
 original embedding methods as well as the original sampling loop. Capture uses
 eager kernels; the compiled baseline explicitly disables implicit Inductor CUDA
 graphs.
+
+Inductor's default fusion can remove intermediate BF16 rounding, so the compiled
+comparison reports normalized RMSE, maximum absolute error divided by reference
+RMS, cosine similarity, and the original `rtol=0.02, atol=0.02` pointwise result.
+The compiled gate requires normalized RMSE ≤ 2 BF16 epsilons (0.015625), normalized
+maximum error ≤ 8 epsilons (0.0625), and cosine ≥ 0.999. These are explicit
+numerical smoke-test limits, not a pretrained policy accuracy guarantee. CUDA
+graph and original-OpenPI comparisons use `rtol=atol=1e-5`. The compiler's precision
+settings are not changed to imitate eager's intermediate rounding.
 
 ## Weights and correctness
 

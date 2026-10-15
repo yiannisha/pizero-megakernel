@@ -112,10 +112,46 @@ def worker(a):
                 execution["inductor_generated_kernels"] = metrics.generated_kernel_count
                 if counters["stats"]["unique_graphs"] < 1:
                     raise RuntimeError("Compiled baseline did not compile any graphs")
-            torch.testing.assert_close(actual, reference, rtol=0.02, atol=0.02)
-            validation["vs_fixed_eager_max_abs"] = (
-                (actual - reference).abs().max().item()
-            )
+            error = (actual - reference).float()
+            validation["vs_fixed_eager_max_abs"] = error.abs().max().item()
+            if a.backend == "openpi-compiled":
+                # Inductor elides intermediate BF16 downcast/upcast pairs across
+                # fused operations. Preserve its default precision policy and
+                # report that drift explicitly using scale-normalized errors.
+                scale = reference.float().square().mean().sqrt().clamp_min(1e-12)
+                nrmse = (error.square().mean().sqrt() / scale).item()
+                normalized_max = (error.abs().max() / scale).item()
+                cosine = torch.nn.functional.cosine_similarity(
+                    actual.float().flatten(), reference.float().flatten(), dim=0
+                ).item()
+                epsilon = torch.finfo(torch.bfloat16).eps
+                limits = {
+                    "nrmse": 2 * epsilon,
+                    "normalized_max_abs": 8 * epsilon,
+                    "cosine_min": 0.999,
+                }
+                validation["compiled_numerics"] = {
+                    "nrmse": nrmse,
+                    "normalized_max_abs": normalized_max,
+                    "cosine": cosine,
+                    "reference_rms": scale.item(),
+                    "limits": limits,
+                    "pointwise_close_rtol_0_02_atol_0_02": torch.isclose(
+                        actual, reference, rtol=0.02, atol=0.02
+                    )
+                    .all()
+                    .item(),
+                }
+                if not (
+                    nrmse <= limits["nrmse"]
+                    and normalized_max <= limits["normalized_max_abs"]
+                    and cosine >= limits["cosine_min"]
+                ):
+                    raise RuntimeError(
+                        f"Compiled BF16 numerical gate failed: {validation}"
+                    )
+            else:
+                torch.testing.assert_close(actual, reference, rtol=1e-5, atol=1e-5)
             # Verify fixed loop against the upstream sample_actions implementation.
             # Feed the same prepared tensors to the original upstream loop.
             original_preprocess = model._preprocess_observation
