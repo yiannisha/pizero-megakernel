@@ -1,0 +1,4 @@
+{
+  "openpi": {"url": "https://github.com/Physical-Intelligence/openpi.git", "rev": "215abfb217dbac7d5f1273282331b9b1866c0479"},
+  "realtime-vla": {"url": "https://github.com/dexmal/realtime-vla.git", "rev": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"}
+}
