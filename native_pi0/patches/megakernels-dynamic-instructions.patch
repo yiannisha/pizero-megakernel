@@ -1,0 +1,96 @@
+diff --git a/include/controller/controller.cuh b/include/controller/controller.cuh
+index 9e2aad4..e95a7d9 100644
+--- a/include/controller/controller.cuh
++++ b/include/controller/controller.cuh
+@@ -104,7 +104,7 @@ __device__ void main_loop(const globals &g, ::megakernel::state<config> &kvms) {
+ 
+         // Step 3. Construct semaphores
+         int opcode = kvms.instruction()[0];
+-        if (opcode == 0) {
++        if (opcode == 0 || (dynamic_instructions_v<globals> && opcode == -1)) {
+             num_semaphores[kvms.instruction_ring] = 0;
+         } else {
+             if (laneid == 0) {
+@@ -129,6 +129,14 @@ __device__ void main_loop(const globals &g, ::megakernel::state<config> &kvms) {
+             // ready to roll!
+             arrive(kvms.instruction_arrived[kvms.instruction_ring], 1);
+         }
++        if constexpr (dynamic_instructions_v<globals>) {
++            if (opcode == -1) {
++                // Retire the terminal slot and all preceding live slots using
++                // the same instruction_finished protocol as static programs.
++                num_iters = kvms.instruction_index + 1;
++                break;
++            }
++        }
+     }
+ 
+     // invalidate remaining semaphores and write out remaining timings
+diff --git a/include/controller/instruction_fetch.cuh b/include/controller/instruction_fetch.cuh
+index 3081c9f..ca77e51 100644
+--- a/include/controller/instruction_fetch.cuh
++++ b/include/controller/instruction_fetch.cuh
+@@ -13,16 +13,22 @@ __device__ void inline load_instructions(int *instruction,
+                                          const globals &g) {
+     auto laneid = ::kittens::laneid();
+ 
+-    auto src_ptr = &g.instructions[kittens::coord<>{(int)(get_worker_id()),
+-                                                    instruction_index, 0}];
+-    // static assert it's an int*
+-    static_assert(std::is_same<decltype(src_ptr), int *>::value,
+-                  "src_ptr is not an int*");
+-
+-    static_assert(config::INSTRUCTION_WIDTH <= 32);
+-
+-    if (laneid < config::INSTRUCTION_WIDTH) {
+-        instruction[laneid] = src_ptr[laneid];
++    if constexpr (dynamic_instructions_v<globals>) {
++        // All lanes participate. The callback must finish publishing the
++        // instruction to this controller warp before returning.
++        g.fetch_instruction(instruction, instruction_index);
++    } else {
++        auto src_ptr = &g.instructions[kittens::coord<>{(int)(get_worker_id()),
++                                                        instruction_index, 0}];
++        // static assert it's an int*
++        static_assert(std::is_same<decltype(src_ptr), int *>::value,
++                      "src_ptr is not an int*");
++
++        static_assert(config::INSTRUCTION_WIDTH <= 32);
++
++        if (laneid < config::INSTRUCTION_WIDTH) {
++            instruction[laneid] = src_ptr[laneid];
++        }
+     }
+ }
+ 
+diff --git a/include/util.cuh b/include/util.cuh
+index 8b96043..893bf8c 100644
+--- a/include/util.cuh
++++ b/include/util.cuh
+@@ -5,6 +5,13 @@
+ 
+ namespace megakernel {
+ 
++// Dynamic programs opt in explicitly; static upstream programs keep their ABI.
++template<class globals> inline constexpr bool dynamic_instructions_v = [] {
++    if constexpr (requires { globals::DYNAMIC_INSTRUCTIONS; })
++        return globals::DYNAMIC_INSTRUCTIONS;
++    else return false;
++}();
++
+ // pid -- physical page id
+ // lid -- logical page id
+ 
+@@ -278,6 +285,12 @@ constexpr int TEVENT_TRIPLES_OUTPUT_READY = 125;
+         for (mks.instruction_index = 0, mks.instruction_ring = 0;              \
+              mks.instruction_index < num_iters; mks.next_instruction()) {      \
+             mks.await_instruction();                                           \
++            if constexpr (dynamic_instructions_v<globals>) {                  \
++                if (mks.instruction()[0] == -1) {                              \
++                    mks.next_instruction();                                   \
++                    break;                                                     \
++                }                                                              \
++            }                                                                  \
+             if (kittens::laneid() == 0) {                                               \
+                 if (is_consumer) {                                             \
+                     mks.record(start_event + 2 * kittens::warpid());                    \

@@ -1,4 +1,22 @@
 {
-  "openpi": {"url": "https://github.com/Physical-Intelligence/openpi.git", "rev": "215abfb217dbac7d5f1273282331b9b1866c0479"},
-  "realtime-vla": {"url": "https://github.com/dexmal/realtime-vla.git", "rev": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"}
+  "openpi": {
+    "url": "https://github.com/Physical-Intelligence/openpi.git",
+    "rev": "215abfb217dbac7d5f1273282331b9b1866c0479"
+  },
+  "realtime-vla": {
+    "url": "https://github.com/dexmal/realtime-vla.git",
+    "rev": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"
+  },
+  "Megakernels": {
+    "url": "https://github.com/yiannisha/Megakernels.git",
+    "rev": "08a7136cdfaa7e40629b65234d46cffcd7d48b00"
+  },
+  "FlashRT": {
+    "url": "https://github.com/flashrt-project/FlashRT.git",
+    "rev": "60054d253dcada1dab5e7c0ff68111f935ee41ca"
+  },
+  "cutlass": {
+    "url": "https://github.com/NVIDIA/cutlass.git",
+    "rev": "da5e086dab31d63815acafdac9a9c5893b1c69e2"
+  }
 }
