@@ -1,5 +1,64 @@
 # π0 megakernel workspace
 
+Native implementation work is in progress under `native_pi0/`; it does not yet
+provide complete π0 inference. The source audit and remaining requirements are
+tracked in `native_pi0/FLASHRT_PORTING_MATRIX.md` and `PLAN.md`.
+
+On B200, the development NVFP4 projection can be validated and measured with:
+
+```bash
+python scripts/validate_nvfp4.py
+python benchmarks/native_primitives.py --workload expert --workers 20 64 148
+compute-sanitizer --tool memcheck --error-exitcode 1 \
+  python benchmarks/native_primitives.py --validation-only --output /tmp/native-fp4-validation.json
+```
+
+The primitive benchmark packs synthetic operands before timing and invokes one
+original Megakernels VM kernel per call. It records projection latency and
+checks CUDA launch count, dequantized-operand parity, and stream compatibility.
+It is not an end-to-end model or pretrained policy benchmark. Its CUDA-event
+interval includes host submission gaps from the Python/ctypes wrapper;
+synchronized wall samples are reported separately. `--workload vision` and
+`--workload prefix` select additional projection shapes. Use a distinct
+`--output` path when preserving different worker sweeps. Validation-only mode
+skips timing and CUPTI profiling, allowing use with compute-sanitizer.
+`--epilogue bf16`, `bias`, or `bias-residual` measures direct BF16 output and
+optional native fusion; `python scripts/validate_epilogues.py --profile`
+checks its numerical behavior and one-launch contract.
+`python scripts/validate_fp4_output.py --profile` checks direct FP4 output,
+including fused GELU and bias/residual terms against pinned CUDA references.
+Packed outputs use `ResidentNVFP4(output_dtype=torch.uint8)` and expose
+`output_scales` separately. `output_geglu=True` selects compact GeGLU for
+interleaved gate/up weights; `python scripts/validate_geglu.py --profile`
+checks full expert/prefix shapes using driver launch callbacks. `--k-tile
+128` or `256` selects larger native FP4 staging tiles in the primitive tools.
+`python scripts/validate_norm.py --profile` checks native RMSNorm/LayerNorm
+with optional residual addition, affine/AWQ scaling, and direct FP4/FP8 output.
+`--row-tile 1`, `4`, or `8` groups rows per VM instruction. The producer avoids
+a global normalized intermediate; complete model execution remains under development.
+Setup applies the recorded VM startup barrier patch in `native_pi0/patches`.
+Run `compute-sanitizer --tool synccheck --error-exitcode 1 python scripts/validate_vm.py`
+to check the patched VM lifecycle.
+
+`python scripts/validate_norm_projection.py --profile` checks a native
+normalization → NVFP4 projection chain in one VM launch. Its resident wrapper
+is `native_pi0.norm_projection.ResidentNormProjection`, with FP32 or BF16
+projection output. All CTAs can help produce FP4 rows; projection loaders wait
+on release/acquire readiness tags before TMA reads. `--producer-rows 1`, `4`,
+or `8` selects ownership granularity. Add `--benchmark-output PATH` to record
+matched one-launch and validation-only two-launch timings. Inputs and reused
+outputs stay on the GPU during forward. Each instance requires stream ordering;
+independent instances can run concurrently. Graph capture is unsupported by
+this development wrapper's host-generated epochs. This chain is not the full model.
+
+`python scripts/validate_dag.py --profile --report results/native_dag_scheduler.json`
+checks an opt-in VM instruction-fetch callback, device ready queue, and terminal
+instruction retirement. The scalar probe covers repeated epochs, fan-in/out,
+permuted graphs, and concurrent instances. Queue initialization occurs inside
+the native invocation. Setup also applies `megakernels-dynamic-instructions.patch`;
+static VM programs retain their original fetch path. Connecting native model
+operators to this scheduler remains in progress.
+
 BF16 latency baselines for the full π0 model (SigLIP vision tower, Gemma 2B
 prefix, Gemma 300M action expert, ten Euler denoising steps):
 

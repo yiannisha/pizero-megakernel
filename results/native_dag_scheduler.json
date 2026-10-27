@@ -1,0 +1,1073 @@
+{
+  "timestamp_utc": "2026-10-27T23:06:37.469003+00:00",
+  "seed": 101,
+  "scope": "Scalar DAG scheduling and VM retirement probe, not GEMM/model or pretrained validation",
+  "mechanism": "MPMC ready queue; lazy epoch dependency counters; resident initializer; dynamic VM fetch and terminal slot",
+  "initialization": "Inside the single native invocation; no GPU reset kernel/copy in forward",
+  "upstreams": {
+    "openpi": {
+      "url": "https://github.com/Physical-Intelligence/openpi.git",
+      "rev": "215abfb217dbac7d5f1273282331b9b1866c0479"
+    },
+    "realtime-vla": {
+      "url": "https://github.com/dexmal/realtime-vla.git",
+      "rev": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"
+    },
+    "Megakernels": {
+      "url": "https://github.com/yiannisha/Megakernels.git",
+      "rev": "08a7136cdfaa7e40629b65234d46cffcd7d48b00"
+    },
+    "FlashRT": {
+      "url": "https://github.com/flashrt-project/FlashRT.git",
+      "rev": "60054d253dcada1dab5e7c0ff68111f935ee41ca"
+    },
+    "cutlass": {
+      "url": "https://github.com/NVIDIA/cutlass.git",
+      "rev": "da5e086dab31d63815acafdac9a9c5893b1c69e2"
+    }
+  },
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "torch": "2.8.0+cu128",
+    "cuda": "12.8"
+  },
+  "resources": {
+    "ctas_per_sm": 1,
+    "sms": 148,
+    "static_shared_bytes": 10520,
+    "dynamic_shared_bytes": 216504,
+    "registers": 128,
+    "local_bytes": 8
+  },
+  "source_sha256": {
+    "native_pi0/dag_scheduler.cuh": "a960afff362cc97cc81ef11f46675bce874b89b9578624daf7e7ca7f0a28602e",
+    "native_pi0/dag_probe.cu": "20711a7e8180a4906fe9f6bfa6ff6295af8b15443c784d13f9aee5f119e7883d",
+    "native_pi0/dag_probe.py": "e834ff91c2fcc07656e1c4ecd57e1f5667f06d7028837a0782502c58e28d2731",
+    "scripts/validate_dag.py": "bb583b7d49800bebd20cf61c1d6c87ab5d84b25f05fad090bfa8509530119245",
+    "native_pi0/launch_trace.cpp": "9a0d9d5d28c9a34a29061c42a0698bb5cd8c56c008513e776f69bde72406842b",
+    "native_pi0/launch_trace.py": "ffedfd8343fe6ded829a8a33d884d0e07056fd9dbcf06698bcffbfbef1387f1e",
+    "native_pi0/patches/megakernels-dynamic-instructions.patch": "5725a90206f53cfb1a324f2535008282a4ebb4946bb7f6eaef39b42fe1ed9cf3",
+    "native_pi0/patches/megakernels-serial-barrier-init.patch": "a43a6647676266c7ba20f620e33b152cbe9b4fe88a903498b64e6f0d9a265682",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859",
+    "third_party/Megakernels/include/util.cuh": "052947e9ce2b62eeb330c6bbe522f9e876ae6023705c7bcb217338b0d0f7bd3c",
+    "third_party/Megakernels/include/controller/controller.cuh": "ee78770ea4eda3c7247785263b7e1b0416d16e78bb179631bbd5eaee4fe40f2d",
+    "third_party/Megakernels/include/controller/instruction_fetch.cuh": "6f97f7cc2c9a1f83cdce385984415f8fdfbb3d3b293f7e585f8fecc4f132ee64"
+  },
+  "results": [
+    {
+      "name": "chain1",
+      "nodes": 1,
+      "edges": 0,
+      "roots": 1,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1000,
+          "epoch": 1,
+          "nodes_executed_once": 1,
+          "queue_head_tail_completed": [
+            1,
+            1,
+            1
+          ],
+          "terminal_ordinals_sum": 1,
+          "max_terminal_ordinal": 1,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "333656e65c2c6b4702e039b0644b0fc289d966b0ff118953c0b60ccaa3b20323"
+        },
+        {
+          "seed": 1001,
+          "epoch": 2,
+          "nodes_executed_once": 1,
+          "queue_head_tail_completed": [
+            1,
+            1,
+            1
+          ],
+          "terminal_ordinals_sum": 1,
+          "max_terminal_ordinal": 1,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "c72e39262f2aa9d2790b33a78805b70b7211c6713d8f1eb7b477efc76a29c801"
+        },
+        {
+          "seed": 1002,
+          "epoch": 3,
+          "nodes_executed_once": 1,
+          "queue_head_tail_completed": [
+            1,
+            1,
+            1
+          ],
+          "terminal_ordinals_sum": 1,
+          "max_terminal_ordinal": 1,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "d2338c120a78ed051a520212e0f5d9d987d3e7fcf1812ec2bb276fb3906dcc73"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "chain2",
+      "nodes": 2,
+      "edges": 1,
+      "roots": 1,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1003,
+          "epoch": 1,
+          "nodes_executed_once": 2,
+          "queue_head_tail_completed": [
+            2,
+            2,
+            2
+          ],
+          "terminal_ordinals_sum": 2,
+          "max_terminal_ordinal": 2,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "fd8bf38ec176a612df249974a7a10fa7d4b46ef6932cafbf26a39fbde3613023"
+        },
+        {
+          "seed": 1004,
+          "epoch": 2,
+          "nodes_executed_once": 2,
+          "queue_head_tail_completed": [
+            2,
+            2,
+            2
+          ],
+          "terminal_ordinals_sum": 2,
+          "max_terminal_ordinal": 2,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "e927c2e7789cf52bd5d52a15cd2aab3e3925e1739d905bba3dd958937b4e74b8"
+        },
+        {
+          "seed": 1005,
+          "epoch": 3,
+          "nodes_executed_once": 2,
+          "queue_head_tail_completed": [
+            2,
+            2,
+            2
+          ],
+          "terminal_ordinals_sum": 2,
+          "max_terminal_ordinal": 2,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "3924b1270461dd07553a362fcc4a31afe10b2ca040bd8c6a16ef64cbe7c1a9f6"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "chain3",
+      "nodes": 3,
+      "edges": 2,
+      "roots": 1,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1006,
+          "epoch": 1,
+          "nodes_executed_once": 3,
+          "queue_head_tail_completed": [
+            3,
+            3,
+            3
+          ],
+          "terminal_ordinals_sum": 3,
+          "max_terminal_ordinal": 3,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "7d1ee6327aa5d104049516017fc77ca7c00355b92ca96b6fc5873a2ff3420ee1"
+        },
+        {
+          "seed": 1007,
+          "epoch": 2,
+          "nodes_executed_once": 3,
+          "queue_head_tail_completed": [
+            3,
+            3,
+            3
+          ],
+          "terminal_ordinals_sum": 3,
+          "max_terminal_ordinal": 3,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "b761beca755289b7d8f683064d8e09eaeb5f880a278f1e06e55be12d986f696f"
+        },
+        {
+          "seed": 1008,
+          "epoch": 3,
+          "nodes_executed_once": 3,
+          "queue_head_tail_completed": [
+            3,
+            3,
+            3
+          ],
+          "terminal_ordinals_sum": 3,
+          "max_terminal_ordinal": 3,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "b5ca7c6c72d0fed0cab92dda0330b032d0980b927ff350db91b0e8159797948e"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "chain17",
+      "nodes": 17,
+      "edges": 16,
+      "roots": 1,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1009,
+          "epoch": 1,
+          "nodes_executed_once": 17,
+          "queue_head_tail_completed": [
+            17,
+            17,
+            17
+          ],
+          "terminal_ordinals_sum": 17,
+          "max_terminal_ordinal": 17,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "14265f10a56bfe0bba793f6e470e0d135a5ac5a957dfb808d15b73084e6c811f"
+        },
+        {
+          "seed": 1010,
+          "epoch": 2,
+          "nodes_executed_once": 17,
+          "queue_head_tail_completed": [
+            17,
+            17,
+            17
+          ],
+          "terminal_ordinals_sum": 17,
+          "max_terminal_ordinal": 17,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "0283ef0f4b8507516099cd743b372fcf98d7c09f9daa14aeeacdad622e298e14"
+        },
+        {
+          "seed": 1011,
+          "epoch": 3,
+          "nodes_executed_once": 17,
+          "queue_head_tail_completed": [
+            17,
+            17,
+            17
+          ],
+          "terminal_ordinals_sum": 17,
+          "max_terminal_ordinal": 17,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "6faba5f5980d5256f07c1129410d7428bae474a541ea0baf552a21e0cd30db7a"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "chain65",
+      "nodes": 65,
+      "edges": 64,
+      "roots": 1,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1012,
+          "epoch": 1,
+          "nodes_executed_once": 65,
+          "queue_head_tail_completed": [
+            65,
+            65,
+            65
+          ],
+          "terminal_ordinals_sum": 65,
+          "max_terminal_ordinal": 65,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "fd799d148c7a668a79314c1ddd5fe9956a71475636244220288a0d69e1ee02d0"
+        },
+        {
+          "seed": 1013,
+          "epoch": 2,
+          "nodes_executed_once": 65,
+          "queue_head_tail_completed": [
+            65,
+            65,
+            65
+          ],
+          "terminal_ordinals_sum": 65,
+          "max_terminal_ordinal": 65,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "664ceb932e6935b96a460c81a7fd90e568f231ea56b7b560e546400449ab043d"
+        },
+        {
+          "seed": 1014,
+          "epoch": 3,
+          "nodes_executed_once": 65,
+          "queue_head_tail_completed": [
+            65,
+            65,
+            65
+          ],
+          "terminal_ordinals_sum": 65,
+          "max_terminal_ordinal": 65,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "fcc40f84b4ea75b698deb0bfcf371cb13eaf0f962f93d13e9989d98116025e7d"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "chain257",
+      "nodes": 257,
+      "edges": 256,
+      "roots": 1,
+      "workers": 16,
+      "replays": [
+        {
+          "seed": 1015,
+          "epoch": 1,
+          "nodes_executed_once": 257,
+          "queue_head_tail_completed": [
+            257,
+            257,
+            257
+          ],
+          "terminal_ordinals_sum": 257,
+          "max_terminal_ordinal": 83,
+          "active_ctas": 13,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "b10eb68a6daa499980624209c55d56791aa5de19a28117a875cb498a3048714c"
+        },
+        {
+          "seed": 1016,
+          "epoch": 2,
+          "nodes_executed_once": 257,
+          "queue_head_tail_completed": [
+            257,
+            257,
+            257
+          ],
+          "terminal_ordinals_sum": 257,
+          "max_terminal_ordinal": 80,
+          "active_ctas": 11,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "c2114ee88e869e61e04c50adea1c5e286722d73597a9f91203bdb3d72371853c"
+        },
+        {
+          "seed": 1017,
+          "epoch": 3,
+          "nodes_executed_once": 257,
+          "queue_head_tail_completed": [
+            257,
+            257,
+            257
+          ],
+          "terminal_ordinals_sum": 257,
+          "max_terminal_ordinal": 97,
+          "active_ctas": 12,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "f8cc5030dbe3590c412f1b8ed54afdf757afaefd8d24b838ed8f810c2cacedd5"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "chain1024",
+      "nodes": 1024,
+      "edges": 1023,
+      "roots": 1,
+      "workers": 16,
+      "replays": [
+        {
+          "seed": 1018,
+          "epoch": 1,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 316,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "9870d0c415dae052fc97e9ca428265a598359b902e57a63e286305bd119fe83e"
+        },
+        {
+          "seed": 1019,
+          "epoch": 2,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 360,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "5b46679f248bcae6a5e77c9f2247c5483ac74acb44e4c9fd89c568a2fe7c8888"
+        },
+        {
+          "seed": 1020,
+          "epoch": 3,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 308,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "d760e8f2fa078498140a9efaf7eaa4f911cf6ba3f9817d464bbe3ae286d52c25"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "independent513",
+      "nodes": 513,
+      "edges": 0,
+      "roots": 513,
+      "workers": 148,
+      "replays": [
+        {
+          "seed": 1021,
+          "epoch": 1,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 28,
+          "active_ctas": 75,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "f5a38881a339c8eae112cba8faf22f6d141cb6fcaf023ffdf5b322bd4406ca2f"
+        },
+        {
+          "seed": 1022,
+          "epoch": 2,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 25,
+          "active_ctas": 66,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "c2609f8c2bb12527d2b8abf1840f40b5a990b8e8296ce1603bf22337c81ff532"
+        },
+        {
+          "seed": 1023,
+          "epoch": 3,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 25,
+          "active_ctas": 68,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "1f79b0671366fda6f1e3c2d1f921641a3faf4093bed19ec5a20a991db0aa65da"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "fanout_join147",
+      "nodes": 149,
+      "edges": 294,
+      "roots": 1,
+      "workers": 148,
+      "replays": [
+        {
+          "seed": 1024,
+          "epoch": 1,
+          "nodes_executed_once": 149,
+          "queue_head_tail_completed": [
+            149,
+            149,
+            149
+          ],
+          "terminal_ordinals_sum": 149,
+          "max_terminal_ordinal": 31,
+          "active_ctas": 43,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "256c399073dc22d125dd50b8e3812f268717c12e8a350f6d836ea5f4c5dbae2e"
+        },
+        {
+          "seed": 1025,
+          "epoch": 2,
+          "nodes_executed_once": 149,
+          "queue_head_tail_completed": [
+            149,
+            149,
+            149
+          ],
+          "terminal_ordinals_sum": 149,
+          "max_terminal_ordinal": 31,
+          "active_ctas": 31,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "fc4ee0cc20cbe275b46a2f8fd5be92181fbed58877acc2ebda57b873747b1c9f"
+        },
+        {
+          "seed": 1026,
+          "epoch": 3,
+          "nodes_executed_once": 149,
+          "queue_head_tail_completed": [
+            149,
+            149,
+            149
+          ],
+          "terminal_ordinals_sum": 149,
+          "max_terminal_ordinal": 37,
+          "active_ctas": 37,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "84ed3be0520c3925cf16564cd33b9bed8e3c9d2467e5ffc5e6f133ed7966867e"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "fanout_join511",
+      "nodes": 513,
+      "edges": 1022,
+      "roots": 1,
+      "workers": 16,
+      "replays": [
+        {
+          "seed": 1027,
+          "epoch": 1,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 152,
+          "active_ctas": 14,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "1e817cc4bf0ab72bf2d278fa6bebe67f730df6938b6c46c69d777e1f6532ce84"
+        },
+        {
+          "seed": 1028,
+          "epoch": 2,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 128,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "66a7548475a0c851017386e9a3bd41d4fd5738282a9d939db482609c3e8d4e94"
+        },
+        {
+          "seed": 1029,
+          "epoch": 3,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 127,
+          "active_ctas": 15,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "9bd662318276b04a985c3829ad210d1bba27a2d1ec611a8e14bfb3cb417d7b88"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "fanout_join511",
+      "nodes": 513,
+      "edges": 1022,
+      "roots": 1,
+      "workers": 148,
+      "replays": [
+        {
+          "seed": 1030,
+          "epoch": 1,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 66,
+          "active_ctas": 98,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "bea4511d33c22a1247bd007caf07396365cde75ea2f5758a0c79a36023e4d316"
+        },
+        {
+          "seed": 1031,
+          "epoch": 2,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 45,
+          "active_ctas": 101,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "be619aae74f698d0f57e219c061d9c77c1344e76db2207020b3297331024c371"
+        },
+        {
+          "seed": 1032,
+          "epoch": 3,
+          "nodes_executed_once": 513,
+          "queue_head_tail_completed": [
+            513,
+            513,
+            513
+          ],
+          "terminal_ordinals_sum": 513,
+          "max_terminal_ordinal": 65,
+          "active_ctas": 102,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "f3149c03d071dbd560d919a297df0484d8fb595d7fdd7d8f2b7a4b9a271eb652"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "layered512",
+      "nodes": 512,
+      "edges": 992,
+      "roots": 16,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1033,
+          "epoch": 1,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 512,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "e7b81ead390b823b53fb14aece5dcb6e33c88b7c2c72d95c3875e8d2988ec91b"
+        },
+        {
+          "seed": 1034,
+          "epoch": 2,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 512,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "303fc9c33eea370d13cb212388415ffe27b004fd9deb76e8896c9b18791d19d3"
+        },
+        {
+          "seed": 1035,
+          "epoch": 3,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 512,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "f9fbb465afa163cd5c511dad33b926b53f8c15bc829d7dd0c5770f29de0c5f35"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "layered512",
+      "nodes": 512,
+      "edges": 992,
+      "roots": 16,
+      "workers": 16,
+      "replays": [
+        {
+          "seed": 1036,
+          "epoch": 1,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 59,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "666270de8c13990193f57b0657c1d638202662cdc2c735cb53be2a065a0d6ad5"
+        },
+        {
+          "seed": 1037,
+          "epoch": 2,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 58,
+          "active_ctas": 15,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "622e2467c4d3a7e2adc764139a59a62bb1db46a325963747c8122c06e17a24d7"
+        },
+        {
+          "seed": 1038,
+          "epoch": 3,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 57,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "151157f7be6a700ad35fd3ce4a9cb65eb897cfe90bab036b2eab9b29ab6d1fda"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "layered512",
+      "nodes": 512,
+      "edges": 992,
+      "roots": 16,
+      "workers": 148,
+      "replays": [
+        {
+          "seed": 1039,
+          "epoch": 1,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 42,
+          "active_ctas": 91,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "b5380c0177c00e77d30bc0c08463fdda39ac0353fbc3fbb445992cc0216b7942"
+        },
+        {
+          "seed": 1040,
+          "epoch": 2,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 43,
+          "active_ctas": 95,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "f4832be1cb977faf7166974f22c0e00fe90a8aa2d060174850ac38c6ed2b8656"
+        },
+        {
+          "seed": 1041,
+          "epoch": 3,
+          "nodes_executed_once": 512,
+          "queue_head_tail_completed": [
+            512,
+            512,
+            512
+          ],
+          "terminal_ordinals_sum": 512,
+          "max_terminal_ordinal": 38,
+          "active_ctas": 95,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "ab1f83f65d10bd13beec1ab21696e586caeb6cdeba61386b06558cc611cdccad"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "random1024",
+      "nodes": 1024,
+      "edges": 2392,
+      "roots": 61,
+      "workers": 1,
+      "replays": [
+        {
+          "seed": 1042,
+          "epoch": 1,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 1024,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "337cfeed2684aa86bff9ba183bd33ca31e04cdef124e5c21b077e8907b26d39c"
+        },
+        {
+          "seed": 1043,
+          "epoch": 2,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 1024,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "2950d64946ffa214d3ec25f0a5f3f3e479502a115dcc14d74aaf8d40ddf6131e"
+        },
+        {
+          "seed": 1044,
+          "epoch": 3,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 1024,
+          "active_ctas": 1,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "b2910896919a396d868e5b12179e917f8eb1c8babb351a598dff67b444a084c1"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "random1024",
+      "nodes": 1024,
+      "edges": 2392,
+      "roots": 61,
+      "workers": 16,
+      "replays": [
+        {
+          "seed": 1045,
+          "epoch": 1,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 84,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "99e70340318dd77109f38c303d9e13294e014b1ebc1c31476b30d996f86b1e67"
+        },
+        {
+          "seed": 1046,
+          "epoch": 2,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 88,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "6881bded04a2682fa439de6aef6acb45f6bdfd325c9cbce30315786295a427a2"
+        },
+        {
+          "seed": 1047,
+          "epoch": 3,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 84,
+          "active_ctas": 16,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "a7ee9e7a26320f4f65b17aadb5927a26c191f064d2a5c6a4d881d326a3892e37"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "random1024",
+      "nodes": 1024,
+      "edges": 2392,
+      "roots": 61,
+      "workers": 148,
+      "replays": [
+        {
+          "seed": 1048,
+          "epoch": 1,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 58,
+          "active_ctas": 92,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "54f3fd4a4c5fe0252edae8714ff9bc23fc4f879151729dee06cc284d488a3727"
+        },
+        {
+          "seed": 1049,
+          "epoch": 2,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 54,
+          "active_ctas": 91,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "080ce7244b32aaea2c3f623a5688ce7ee8b3c0150a8d4774ae2402dd543f82b6"
+        },
+        {
+          "seed": 1050,
+          "epoch": 3,
+          "nodes_executed_once": 1024,
+          "queue_head_tail_completed": [
+            1024,
+            1024,
+            1024
+          ],
+          "terminal_ordinals_sum": 1024,
+          "max_terminal_ordinal": 61,
+          "active_ctas": 93,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "3b8644253c9deb6ef83a371418aef2bacc3cc39008ae8a330c6946fea8c98fc9"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    },
+    {
+      "name": "random4096",
+      "nodes": 4096,
+      "edges": 9601,
+      "roots": 241,
+      "workers": 148,
+      "replays": [
+        {
+          "seed": 1051,
+          "epoch": 1,
+          "nodes_executed_once": 4096,
+          "queue_head_tail_completed": [
+            4096,
+            4096,
+            4096
+          ],
+          "terminal_ordinals_sum": 4096,
+          "max_terminal_ordinal": 191,
+          "active_ctas": 116,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "e9e50b92d35c3bb9931c7dfeb17f7251b3d84eb71a06606ddd2df37c28dc74b3"
+        },
+        {
+          "seed": 1052,
+          "epoch": 2,
+          "nodes_executed_once": 4096,
+          "queue_head_tail_completed": [
+            4096,
+            4096,
+            4096
+          ],
+          "terminal_ordinals_sum": 4096,
+          "max_terminal_ordinal": 199,
+          "active_ctas": 120,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "839a1926c1c74ecf71d293d8550569bdb5026b071bbe1b8a309d547abea8539d"
+        },
+        {
+          "seed": 1053,
+          "epoch": 3,
+          "nodes_executed_once": 4096,
+          "queue_head_tail_completed": [
+            4096,
+            4096,
+            4096
+          ],
+          "terminal_ordinals_sum": 4096,
+          "max_terminal_ordinal": 194,
+          "active_ctas": 124,
+          "dependency_timestamps": "ordered",
+          "value_sha256": "3686725425191319f68a2ab12c169b55f08e93a530ccac93b87845639fdd05af"
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI9DagConfig10DagGlobalsJ10DagProbeOpEEEvT0_"
+    }
+  ],
+  "concurrent": {
+    "workers_per_instance": 100,
+    "total_submitted_ctas": 200,
+    "root_compute_overlap_ns": 881664,
+    "values_and_epochs": "exact",
+    "two_forward_launch_count": 2
+  }
+}
