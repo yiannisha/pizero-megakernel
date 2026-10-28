@@ -32,10 +32,13 @@ struct Fp4Globals {
 struct Fp4Matmul {
     static constexpr int opcode=1;
     static_assert(sizeof(PackedTile)<=Cfg::PAGE_SIZE);
-    static __device__ int iterations(const Fp4Globals& g){return (g.a.cols()/32+FP4_K_GROUPS-1)/FP4_K_GROUPS;}
-    static __device__ int task(const Fp4Globals& g,State& s){return g.task_from_instruction?s.instruction()[2]:s.instruction_index*g.workers+blockIdx.x;}
-    static __device__ int row(const Fp4Globals& g,State& s){return (task(g,s)/g.n_tiles)%g.m_tiles;}
-    static __device__ int col(const Fp4Globals& g,State& s){return task(g,s)%g.n_tiles;}
+    template<class G> static __device__ int iterations(const G& g){return (g.a.cols()/32+FP4_K_GROUPS-1)/FP4_K_GROUPS;}
+    template<class G> static __device__ int task(const G& g,State& s){
+        if constexpr(requires { g.fixed_task; })return g.fixed_task;
+        else return g.task_from_instruction?s.instruction()[2]:s.instruction_index*g.workers+blockIdx.x;
+    }
+    template<class G> static __device__ int row(const G& g,State& s){return (task(g,s)/g.n_tiles)%g.m_tiles;}
+    template<class G> static __device__ int col(const G& g,State& s){return task(g,s)%g.n_tiles;}
     static __device__ PackedTile& tile(State& s,int i){return *reinterpret_cast<PackedTile*>(s.pages[s.pid(i)].ptr());}
     static __device__ unsigned char* sf(State& s,int ring){return reinterpret_cast<unsigned char*>(s.pages[s.pid(3*ring+2)].ptr());}
     struct controller {
@@ -45,7 +48,7 @@ struct Fp4Matmul {
             return 7;
         }
     };
-    struct loader {static __device__ void run(const Fp4Globals& g,State& s){
+    struct loader {template<class G> static __device__ void run(const G& g,State& s){
         if(task(g,s)>=g.tasks){megakernel::NoOp<Cfg>::loader::run(g,s);return;}
         int lane=kittens::laneid();
         int groups=g.a.cols()/32,count=iterations(g),used=3*min(count,2);
@@ -99,7 +102,7 @@ struct Fp4Matmul {
         // FlashRT Sm100GeluMulCompactBlockScaleFactorRowStore::gelu_tanh_.
         return x/(1.f+expf(-1.5957691216057308f*x*(1.f+.044715f*x*x)));
     }
-    struct launcher {static __device__ void run(const Fp4Globals& g,State& s){
+    struct launcher {template<class G> static __device__ void run(const G& g,State& s){
         if(task(g,s)>=g.tasks){megakernel::NoOp<Cfg>::launcher::run(g,s);return;}
         if(kittens::laneid()==0){
             s.wait_tensor_ready();
@@ -137,7 +140,7 @@ struct Fp4Matmul {
             for(int i=0;i<3*min(count,2);i++)s.finish_page(s.pid(i),Cfg::NUM_CONSUMER_WARPS);
         }
     }};
-    struct consumer {static __device__ void run(const Fp4Globals& g,State& s){
+    struct consumer {template<class G> static __device__ void run(const G& g,State& s){
         if(task(g,s)>=g.tasks)return;
         kittens::wait(s.semaphores()[6],0);
         if(kittens::warpid()<4){
