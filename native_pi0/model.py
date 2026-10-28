@@ -101,16 +101,19 @@ class NativePi0:
                     ldb or (b.shape[-1] if b is not None else n),n,p0,p1,slot,cache_base,float(alpha))
         tile=128 if mode in (5,6) else 16384;self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c),cost=k if mode==5 else 588 if mode==6 else 64);return out
 
-    def dense(self,x,weight,bias=None,*,rows=None,residual=None):
+    def dense(self,x,weight,bias=None,*,rows=None,residual=None,geglu=False):
         rows=rows or x.shape[0];n,k=weight.shape;mp=padded(rows,128);kp=padded(k,64);npad=padded(n,128)
         if x.shape!=(mp,kp) or x.dtype!=torch.bfloat16:raise ValueError(('Dense layout',x.shape,(mp,kp),x.dtype))
+        if geglu and (bias is not None or residual is not None or n%256):raise ValueError('GeGLU requires interleaved gate/up BF16 weights')
         key=(weight.data_ptr(),n,k)
         if key not in self.weight_buffers:
             w=self.tensor((npad,kp));w[:n,:k].copy_(weight);self.weight_buffers[key]=w
+        compact=self.tensor((mp,npad//2)) if geglu else None
         op=self.owners.enter_context(ResidentDense(self.library_path,x[:rows,:k],weight,bias=bias,workers=self.workers,
             input_buffer=x,weight_buffer=self.weight_buffers[key],residual=residual,
-            residual_buffer=residual,round_before_residual=residual is not None))
-        self.add(0,op.handle.value,(mp//128)*(npad//128),output=op.output,inputs=(x,residual),cost=kp);return op.output
+            residual_buffer=residual,round_before_residual=residual is not None,geglu_output=compact))
+        output=compact if geglu else op.output
+        self.add(0,op.handle.value,(mp//128)*(npad//128),output=output,inputs=(x,residual),cost=kp);return output
 
     def norm(self,x,module,*,rms):
         gamma=module.weight.float()+(1. if rms else 0.);beta=None if rms else module.bias.float()
@@ -171,9 +174,9 @@ class NativePi0:
         y=self.norm(x,layer.post_attention_layernorm if rms else layer.layer_norm2,rms=rms)
         if debug:self.landmarks[tag+'norm2']=y[:logical]
         if rms:
-            weights=torch.cat([layer.mlp.gate_proj.weight,layer.mlp.up_proj.weight]);self.buffers.append(weights)
-            y=self.dense(y,weights,rows=batches*rows)
-            y=self.scalar(3,(x.shape[0],weights.shape[0]//2),a=y)
+            weights=torch.stack((layer.mlp.gate_proj.weight,layer.mlp.up_proj.weight),dim=1).reshape(-1,y.shape[-1]).contiguous()
+            self.buffers.append(weights)
+            y=self.dense(y,weights,rows=batches*rows,geglu=True)
             if debug:self.landmarks[tag+'activation']=y[:logical]
             y=self.dense(y,layer.mlp.down_proj.weight,rows=batches*rows,residual=x)
         else:

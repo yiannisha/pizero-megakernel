@@ -225,3 +225,26 @@ are recorded alongside the benchmark.
 `results/native_pi0_rope_cache_producer_prompt16.json` also passes the full
 three-view, 50-action, ten-step gate with a 16-token prompt (action NRMSE
 0.01230), covering the changed cache offset.
+
+### Native gate/up GeGLU GEMM epilogue
+
+The BF16 Gemma FFN setup now interleaves each gate/up weight row pair. A
+native tensor-core GEMM consumer rounds both projection values to BF16,
+applies the same tanh GeGLU formula and BF16 activation rounding as the
+previous pointwise stage, then writes a compact FFN activation. The down
+projection consumes that buffer through the existing producer counter. This
+removes the separate GeGLU range instruction from every active prefix and
+expert FFN while keeping the calculation in the single VM launch.
+
+The initial full run preserved action NRMSE 0.00889 and measured 194.17 ms
+native, compared with the preceding 208.71 ms isolated median. The program
+shrunk from 79,884 to 71,608 range instructions. The one-view, eight-action,
+one-step program passed the numerical gate and Compute Sanitizer memcheck and
+synccheck with zero reported errors. The clean-source rebuild in
+`results/native_pi0_geglu_epilogue_clean.json` measured 194.09 ms native
+versus 244.17 ms eager with the same 0.00889 action NRMSE and one launch.
+The full 16-token prompt case also passed (0.01230 NRMSE); clean-build
+memcheck and synccheck both reported zero errors on the complete three-view,
+50-action, ten-step configuration. Their reports are
+`results/native_pi0_geglu_epilogue_full_memcheck.json` and
+`results/native_pi0_geglu_epilogue_full_synccheck.json`.

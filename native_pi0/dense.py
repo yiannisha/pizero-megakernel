@@ -13,7 +13,7 @@ class ResidentDense:
     Buffers remain resident and calls on an instance require stream ordering.
     """
     def __init__(self,library,inputs,weights,*,alpha=1.,bias=None,residual=None,output_dtype=torch.bfloat16,workers=148,
-                 input_buffer=None,weight_buffer=None,output_buffer=None,residual_buffer=None,round_before_residual=False):
+                 input_buffer=None,weight_buffer=None,output_buffer=None,residual_buffer=None,round_before_residual=False,geglu_output=None):
         self.handle=ctypes.c_void_p();self.library=ctypes.CDLL(str(library))
         if inputs.ndim!=2 or weights.ndim!=2 or inputs.shape[1]!=weights.shape[1]:raise ValueError('Inputs and weights must be [M,K] and [N,K]')
         if inputs.dtype not in (torch.bfloat16,torch.float8_e4m3fn) or weights.dtype!=inputs.dtype:raise ValueError('Inputs and weights must share BF16 or FP8 E4M3 dtype')
@@ -61,6 +61,16 @@ class ResidentDense:
             configure.argtypes=[ctypes.c_void_p];configure.restype=ctypes.c_int
             error=configure(self.handle)
             if error:raise RuntimeError(f'Native dense residual rounding error {error}')
+        if geglu_output is not None:
+            if inputs.dtype!=torch.bfloat16 or output_dtype!=torch.bfloat16 or bias is not None or residual is not None or n%256:
+                raise ValueError('GeGLU epilogue requires unbiased, unresidualed BF16 gate/up pairs')
+            if geglu_output.device!=self.device or geglu_output.dtype!=torch.bfloat16 or tuple(geglu_output.shape)!=(mp,npad//2) or not geglu_output.is_contiguous() or geglu_output.data_ptr()%128:
+                raise ValueError('GeGLU output must be a contiguous aligned compact BF16 buffer')
+            configure=self.library.configure_dense_geglu
+            configure.argtypes=[ctypes.c_void_p,ctypes.c_void_p];configure.restype=ctypes.c_int
+            error=configure(self.handle,geglu_output.data_ptr())
+            if error:raise RuntimeError(f'Native dense GeGLU epilogue error {error}')
+            self.logical_output=geglu_output[:m,:n//2]
         self.launch=self.library.launch_dense;self.launch.argtypes=[ctypes.c_void_p]*2;self.launch.restype=ctypes.c_int
         self.destroy=self.library.destroy_dense;self.destroy.argtypes=[ctypes.c_void_p];self.destroy.restype=ctypes.c_int
 

@@ -89,3 +89,9 @@ and V cache row once before attention reads it. The clean isolated result in
 the same 0.00889 action NRMSE, compared with 216.15 ms for the preceding
 native path in a separate isolated run. QKV projection and RoPE remain
 distinct native instructions; projection-epilogue fusion remains open.
+The gate/up projection and GeGLU are now fused in the native GEMM consumer
+using setup-time interleaved gate/up weight rows. The first complete run kept
+0.00889 action NRMSE and measured 194.17 ms native, with 71,608 range
+instructions. The clean-source replay measured 194.09 ms native in
+`results/native_pi0_geglu_epilogue_clean.json`. This is a BF16 result;
+quantized FFN paths remain open.
