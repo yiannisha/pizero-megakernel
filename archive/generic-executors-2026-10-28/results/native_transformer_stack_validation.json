@@ -1,0 +1,82 @@
+{
+  "timestamp_utc": "2026-10-28T04:30:04.302721+00:00",
+  "source_sha256": {
+    "native_pi0/validate_quantization.cu": "4d5bf3b735118fbd978aed5ec7c0a4c91dcea340b11d8b7b585aa797f23effda",
+    "native_pi0/vm_probe.cu": "24ddf8a7725f3fac30858423aec10365eaa3f4bd0f2f34448f984b795ecf7c7c",
+    "native_pi0/tcgen_probe.cu": "390b854c4f55bfc3020bbf079e646e4394503329b1977c72d10d2b5a2f5c0d5b",
+    "native_pi0/nvfp4_probe.cu": "ab2582c546114883388a7b7b647d4daf641e46b546a196aa0eca57b490da2456",
+    "native_pi0/fp4_output_reference.cu": "a26334c038d3188b5805fc210c62163c0aab3be1366224e2c6dd346d00acb72e",
+    "native_pi0/norm.cu": "6a8b2fdebe2737f8c00fc1e091df44c211771efa5c504b1af1d3344697777733",
+    "native_pi0/norm_reference.cu": "3b3008bf5c67ae55efa748ab16bd20f1102d30170e52e30eed0a5e2a2bc54f56",
+    "native_pi0/barrier_init_probe.cu": "a8d37880d56e191aacf4c3490ad5b8909c8ff4a2985bfb84d759fbcf4b5b001f",
+    "native_pi0/norm_projection.cu": "399ca2a48b200961113e793a37106e341d55b3a775ddaca2c269c93273858494",
+    "native_pi0/dag_probe.cu": "c459d6f6b12f32139cf3d9aa68272c12939e10d84b37ea3c32edb1efac57e966",
+    "native_pi0/dag_matmul.cu": "f5bc02e101705f8b64b4d54bd44686a95505415bad345feb0ee6272ab51907c7",
+    "native_pi0/attention.cu": "7f2f6ccea954716ed293afaa16917884a380ee703593a49027293340da04c534",
+    "native_pi0/attention_reference.cu": "ddca2a0a6f87b8e1d7c6a2dba60791dbb57443a6c37cd18baac49b4e6b086084",
+    "native_pi0/dense.cu": "b49320258b9b0fba3a49cd8a77b8501a83d9919f51ecd846774401fc9613c929",
+    "native_pi0/projection_attention.cu": "f08cf802eff7294894b59fc626b084df0f956510d435734861088d6ff51a225e",
+    "native_pi0/transformer_block.cu": "8dadc1767909010dad6e1461c7254dfeb2223b033c961d2c3c08c8209d1cd046",
+    "native_pi0/quantization.py": "a21ef6063cb95b8a9d66246d867f462d1b9f9e8676e8d36cb2c76726e6ab18b9",
+    "native_pi0/test_quantization.py": "3855f2e08567945f28f0c2e15be4a948892b97ba5a7bb2de4625e50de16acd84",
+    "native_pi0/calibration.py": "78b34d15c98bdc0b3782323e0ce02d2230663fe1ede9b309db349c3a47ffac64",
+    "native_pi0/test_calibration.py": "6e2498ec6338acd92c1c4c55c8ef770e5f20e8d37e4be82bbabe3ef95da4afbe",
+    "native_pi0/primitives.py": "0f846db8ac8800c4cddd410fa1f53fb1c203922e4d3e0d679dea685d2fd6ecf7",
+    "native_pi0/launch_trace.py": "ffedfd8343fe6ded829a8a33d884d0e07056fd9dbcf06698bcffbfbef1387f1e",
+    "native_pi0/normalization.py": "f9c780c6933c496bbe8d23150c0fadc76dec3186595939e12ee77d95c2c4b4ad",
+    "native_pi0/norm_projection.py": "bd5bf016da29f631a79b65d6d21457027138087d64db93ef53a0b74f731a5ab3",
+    "native_pi0/dag_probe.py": "0a1df5966cb08d1b44c0752d140264d624c60e93087bb4a4cedf744320423c3d",
+    "native_pi0/dag_matmul.py": "b7e8c585a634d419803596e438fdf207069bc5d66479b8f27acad0f9a4e09b49",
+    "native_pi0/storage.py": "157c6368c2ee76396c3d8cad576c02a296cb7c976b6ee3441a5f356383fd29c4",
+    "native_pi0/attention.py": "df5cedfcd3b38a246ea28e7930e339e52b3a760bff151def1d3e1d0b7e0aeebb",
+    "native_pi0/dense.py": "caba830a5d15aebdaf951b4662902fdcca02ed1259118e19c0f68f47c25595f0",
+    "native_pi0/projection_attention.py": "1d92b7c7d02ccebfe9d5132cea9a4074f3446cc986580a38c32759da7f782c2a",
+    "native_pi0/cached_prefix_expert.py": "558c77f528b0b0828ac37843572ebfb1219ce89482ce2fd05318148b454763a7",
+    "native_pi0/transformer_block.py": "44ea7fea980c3366a169f1538c993cbe6c9e4e93a09a5ca338c704d2fa0a0a24",
+    "native_pi0/transformer_stack.py": "1ac29512f655ac53b4aefdb755ba485e3b35da29d268811395c70657ee748b33",
+    "native_pi0/dag_scheduler.cuh": "f3ed6f1ea144c32e12450ab8a5ba72cfa8452ae54dc2bdfb50459f81632dcbdc",
+    "scripts/validate_transformer_stack.py": "eccf98ba73b3e1505f86a42c55a64be7d9ebb9a4750b32ba19786de03c14ea2e",
+    "scripts/validate_transformer_block.py": "e2815bf2de84de20aba7466dd775c1498c888342fe54ac5a349260c07500a38a",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859",
+    "third_party/Megakernels/include/controller/instruction_fetch.cuh": "6f97f7cc2c9a1f83cdce385984415f8fdfbb3d3b293f7e585f8fecc4f132ee64"
+  },
+  "library_sha256": "8024b011fb20aa4b3250f06b28ab4e9cd9acadb768c1682f707156ed18679cfa",
+  "scope": "Synthetic transformer layer stacks and final norm; expert caches prefilled independently; not a complete policy or pretrained parity",
+  "reports": [
+    "results/native_transformer_stack.json",
+    "results/native_transformer_stack_permuted.json",
+    "results/native_transformer_stack_memcheck.json",
+    "results/native_transformer_stack_synccheck.json"
+  ],
+  "case_count": 4,
+  "replays_per_case": 3,
+  "ordered_permuted_outputs": "bit-exact all four cases",
+  "one_launch_depth18": "18 transformer blocks plus final RMSNorm; serial native reference has 19 launches",
+  "sanitizers": {
+    "memcheck": {
+      "errors": 0,
+      "output": "========= COMPUTE-SANITIZER\none-worker-depth18 prepared layers 3\none-worker-depth18 prepared layers 6\none-worker-depth18 prepared layers 9\none-worker-depth18 prepared layers 12\none-worker-depth18 prepared layers 15\none-worker-depth18 prepared layers 18\none-worker-depth18 replay 1 all layer outputs and caches exact\none-worker-depth18 replay 2 all layer outputs and caches exact\none-worker-depth18 replay 3 all layer outputs and caches exact\none-worker-depth18 final output SHA256 33b4e5a2afdf7cc40ab65406eac1cbf71d3e79608520c6c6458ff128cd7eeced\nmixed-tail prepared layers 3\nmixed-tail replay 1 all layer outputs and caches exact\nmixed-tail replay 2 all layer outputs and caches exact\nmixed-tail replay 3 all layer outputs and caches exact\nmixed-tail final output SHA256 9b66927ead005f09e01ab573750150effce561f182ca060ed9892e9f45504bd1\nexpert-depth18 prepared layers 3\nexpert-depth18 prepared layers 6\nexpert-depth18 prepared layers 9\nexpert-depth18 prepared layers 12\nexpert-depth18 prepared layers 15\nexpert-depth18 prepared layers 18\nexpert-depth18 replay 1 all layer outputs and caches exact\nexpert-depth18 replay 2 all layer outputs and caches exact\nexpert-depth18 replay 3 all layer outputs and caches exact\nexpert-depth18 final output SHA256 2f2d4012031bf0d873539ae7866e809c528af00f0cf328ffd263d54b7c30ecf8\nprefix-depth18 prepared layers 3\nprefix-depth18 prepared layers 6\nprefix-depth18 prepared layers 9\nprefix-depth18 prepared layers 12\nprefix-depth18 prepared layers 15\nprefix-depth18 prepared layers 18\nprefix-depth18 replay 1 all layer outputs and caches exact\nprefix-depth18 replay 2 all layer outputs and caches exact\nprefix-depth18 replay 3 all layer outputs and caches exact\nprefix-depth18 final output SHA256 15d3a57fbaa4e2ceb283557bc87e7582fc73b452cca59f359bdc37c5e861012a\n========= ERROR SUMMARY: 0 errors\n",
+      "report": "results/native_transformer_stack_memcheck.json"
+    },
+    "synccheck": {
+      "errors": 0,
+      "output": "========= COMPUTE-SANITIZER\none-worker-depth18 prepared layers 3\none-worker-depth18 prepared layers 6\none-worker-depth18 prepared layers 9\none-worker-depth18 prepared layers 12\none-worker-depth18 prepared layers 15\none-worker-depth18 prepared layers 18\none-worker-depth18 replay 1 all layer outputs and caches exact\none-worker-depth18 replay 2 all layer outputs and caches exact\none-worker-depth18 replay 3 all layer outputs and caches exact\none-worker-depth18 final output SHA256 33b4e5a2afdf7cc40ab65406eac1cbf71d3e79608520c6c6458ff128cd7eeced\nmixed-tail prepared layers 3\nmixed-tail replay 1 all layer outputs and caches exact\nmixed-tail replay 2 all layer outputs and caches exact\nmixed-tail replay 3 all layer outputs and caches exact\nmixed-tail final output SHA256 9b66927ead005f09e01ab573750150effce561f182ca060ed9892e9f45504bd1\nexpert-depth18 prepared layers 3\nexpert-depth18 prepared layers 6\nexpert-depth18 prepared layers 9\nexpert-depth18 prepared layers 12\nexpert-depth18 prepared layers 15\nexpert-depth18 prepared layers 18\nexpert-depth18 replay 1 all layer outputs and caches exact\nexpert-depth18 replay 2 all layer outputs and caches exact\nexpert-depth18 replay 3 all layer outputs and caches exact\nexpert-depth18 final output SHA256 2f2d4012031bf0d873539ae7866e809c528af00f0cf328ffd263d54b7c30ecf8\nprefix-depth18 prepared layers 3\nprefix-depth18 prepared layers 6\nprefix-depth18 prepared layers 9\nprefix-depth18 prepared layers 12\nprefix-depth18 prepared layers 15\nprefix-depth18 prepared layers 18\nprefix-depth18 replay 1 all layer outputs and caches exact\nprefix-depth18 replay 2 all layer outputs and caches exact\nprefix-depth18 replay 3 all layer outputs and caches exact\nprefix-depth18 final output SHA256 15d3a57fbaa4e2ceb283557bc87e7582fc73b452cca59f359bdc37c5e861012a\n========= ERROR SUMMARY: 0 errors\n",
+      "report": "results/native_transformer_stack_synccheck.json"
+    }
+  },
+  "final_norm_context_alias": "rejected before child bindings change",
+  "resources": [
+    "REG:200 STACK:2848 SHARED:11424 LOCAL:0 CONSTANT[2]:196 CONSTANT[0]:1168 TEXTURE:0 SURFACE:0 SAMPLER:0"
+  ],
+  "monitored_worker_report": "results/native_transformer_workers_expert_monitored.json",
+  "worker_tuning": "148 workers best of tested 148/64/32/16; reducing workers does not close performance gap",
+  "performance_limit": "Prefix plus ten expert-stack timings project to about 238 ms before vision and model heads; this is not a measured complete-model result",
+  "remaining": [
+    "prefix-to-expert integration in one launch",
+    "vision stack and embedding/position/mask preparation",
+    "state/action/time heads, Euler updates and ten device-side denoising steps",
+    "calibrated pretrained checkpoint parity and rollouts",
+    "skinny GEMM and scheduler optimization; matched end-to-end comparisons"
+  ],
+  "acceptance": "All M0-M9 acceptance remains open; synthetic stack correctness does not prove model acceptance"
+}

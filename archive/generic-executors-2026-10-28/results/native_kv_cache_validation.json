@@ -1,0 +1,54 @@
+{
+  "timestamp_utc": "2026-10-28T03:45:22.469577+00:00",
+  "scope": "One prefix/expert attention-layer pair per launch; not a full transformer or ten-step denoising model",
+  "source_sha256": {
+    "native_pi0/attention.cu": "7f2f6ccea954716ed293afaa16917884a380ee703593a49027293340da04c534",
+    "native_pi0/attention.py": "df5cedfcd3b38a246ea28e7930e339e52b3a760bff151def1d3e1d0b7e0aeebb",
+    "native_pi0/dense.cu": "1f7dedacd35f17a783e7d8b540ffafafdd0ed277b58453de6523016a667fea0a",
+    "native_pi0/dense.py": "caba830a5d15aebdaf951b4662902fdcca02ed1259118e19c0f68f47c25595f0",
+    "native_pi0/projection_attention.cu": "f08cf802eff7294894b59fc626b084df0f956510d435734861088d6ff51a225e",
+    "native_pi0/projection_attention.py": "1d92b7c7d02ccebfe9d5132cea9a4074f3446cc986580a38c32759da7f782c2a",
+    "native_pi0/cached_prefix_expert.py": "558c77f528b0b0828ac37843572ebfb1219ce89482ce2fd05318148b454763a7",
+    "native_pi0/tcgen_probe.cu": "65bd31e9be332a068904a3810ae94641770b3c585db917e93492fab825558b5e",
+    "native_pi0/dag_probe.cu": "c459d6f6b12f32139cf3d9aa68272c12939e10d84b37ea3c32edb1efac57e966",
+    "native_pi0/dag_probe.py": "0a1df5966cb08d1b44c0752d140264d624c60e93087bb4a4cedf744320423c3d",
+    "native_pi0/dag_scheduler.cuh": "f3ed6f1ea144c32e12450ab8a5ba72cfa8452ae54dc2bdfb50459f81632dcbdc",
+    "native_pi0/launch_trace.cpp": "9a0d9d5d28c9a34a29061c42a0698bb5cd8c56c008513e776f69bde72406842b",
+    "native_pi0/launch_trace.py": "ffedfd8343fe6ded829a8a33d884d0e07056fd9dbcf06698bcffbfbef1387f1e",
+    "scripts/validate_kv_cache.py": "647d52c9789d07e5bce368fea2c1a70cc369bb8510973f7039e8ba8e8c12578a",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859",
+    "third_party/Megakernels/include/util.cuh": "052947e9ce2b62eeb330c6bbe522f9e876ae6023705c7bcb217338b0d0f7bd3c",
+    "third_party/Megakernels/include/controller/controller.cuh": "ee78770ea4eda3c7247785263b7e1b0416d16e78bb179631bbd5eaee4fe40f2d",
+    "third_party/Megakernels/include/controller/instruction_fetch.cuh": "6f97f7cc2c9a1f83cdce385984415f8fdfbb3d3b293f7e585f8fecc4f132ee64"
+  },
+  "reports": [
+    "results/native_kv_cache.json",
+    "results/native_kv_cache_permuted.json",
+    "results/native_cache_noncache_regression.json"
+  ],
+  "permuted_pair_output_hashes": "exact ordered/permuted for all three pairs",
+  "sanitizers": {
+    "memcheck": {
+      "errors": 0,
+      "log_sha256": "077212654561a95db36ef981eb0c0d613f55c8159ae1446a5f30a4e1248215bf",
+      "cases": "five cache configurations, cached QKV/attention/O, three prefix/expert pairs"
+    },
+    "synccheck": {
+      "errors": 0,
+      "log_sha256": "077212654561a95db36ef981eb0c0d613f55c8159ae1446a5f30a4e1248215bf",
+      "cases": "five cache configurations, cached QKV/attention/O, three prefix/expert pairs"
+    }
+  },
+  "noncache_regression": {
+    "dense_cases": 12,
+    "attention_sublayers": 6,
+    "separate_stage_output_comparison": "bit-exact"
+  },
+  "remaining": [
+    "normalization/FFN composition into complete blocks",
+    "all prefix, vision and expert layers",
+    "ten denoising steps inside one launch with distinct invocation completion state",
+    "pretrained weights, calibration, model parity and rollouts",
+    "end-to-end performance acceptance"
+  ]
+}

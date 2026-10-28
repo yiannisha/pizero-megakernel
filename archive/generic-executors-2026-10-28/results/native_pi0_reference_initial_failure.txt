@@ -1,0 +1,68 @@
+Constructing actual pinned OpenPI model
+Running complete OpenPI eager reference
+Building complete native π0 program
+Native reference: vision layers 9
+Native reference: vision layers 18
+Native reference: vision layers 27
+Native reference: prefix layers 6
+Native reference: prefix layers 12
+Native reference: prefix layers 18
+Native reference: expert denoising step 1 wired
+Native reference: expert denoising step 2 wired
+Native reference: expert denoising step 3 wired
+Native reference: expert denoising step 4 wired
+Native reference: expert denoising step 5 wired
+Native reference: expert denoising step 6 wired
+Native reference: expert denoising step 7 wired
+Native reference: expert denoising step 8 wired
+Native reference: expert denoising step 9 wired
+Native reference: expert denoising step 10 wired
+Native π0 reference: compiling device schedule 2544 stages 267312 tasks
+Native setup seconds 22.334144080989063
+patch 0.0
+vision.0 0.00225994735956192
+vision.17 0.010107339359819889
+vision.26 0.010933094657957554
+debug.input 0.011294797994196415
+debug.norm1 0.01151010487228632
+debug.q 0.01168343611061573
+debug.k 0.011633642949163914
+debug.v 0.011950775980949402
+debug.attention 0.034948091953992844
+debug.o 0.03640902414917946
+debug.residual1 0.03333093598484993
+debug.norm2 0.03339648246765137
+debug.activation 0.04874357953667641
+debug.down 0.04805147275328636
+prefix.0 0.047057341784238815
+prefix.17 0.13684722781181335
+expert.0.0 0.0207633376121521
+expert.0.17 0.05586192011833191
+expert.1.0 0.02205337956547737
+expert.1.17 0.056769274175167084
+expert.2.0 0.020661816000938416
+expert.2.17 0.057050637900829315
+expert.3.0 0.02643151767551899
+expert.3.17 0.05726044252514839
+expert.4.0 0.027276508510112762
+expert.4.17 0.05910339951515198
+expert.5.0 0.029403382912278175
+expert.5.17 0.05794297531247139
+expert.6.0 0.026797743514180183
+expert.6.17 0.058993950486183167
+expert.7.0 0.029787207022309303
+expert.7.17 0.059680692851543427
+expert.8.0 0.02712249383330345
+expert.8.17 0.058595944195985794
+expert.9.0 0.029845042154192924
+expert.9.17 0.05966585874557495
+COMPLETE π0 native/eager action NRMSE 0.034295231103897095 one launch 1
+Complete model medians ms native/eager 1083.1470947265625 175.13754272460938
+Traceback (most recent call last):
+  File "/workspace/pizero-megakernel/scripts/validate_native_pi0.py", line 102, in <module>
+    if __name__=='__main__':main()
+                            ^^^^^^
+  File "/workspace/pizero-megakernel/scripts/validate_native_pi0.py", line 99, in main
+    assert passed,('Complete action parity',error,normalized_max,cosine)
+           ^^^^^^
+AssertionError: ('Complete action parity', 0.034295231103897095, 0.10948822647333145, 0.9994117617607117)

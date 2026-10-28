@@ -1,109 +1,28 @@
 # π0 megakernel workspace
 
-Native implementation work is in progress under `native_pi0/`; it does not yet
-provide complete π0 inference. The source audit and remaining requirements are
-tracked in `native_pi0/FLASHRT_PORTING_MATRIX.md` and `PLAN.md`.
+The active implementation is being rebuilt as a native Hazy Megakernels
+program using Gemma-style static instruction streams and tile-range operators.
+The earlier generic ready-queue and stage-counter executors have been retired.
+They do not provide a validated π0 model or a performance baseline.
 
-On B200, the development NVFP4 projection can be validated and measured with:
+The architecture decision and keep/archive audit are in
+[native_pi0/IMPLEMENTATION.md](native_pi0/IMPLEMENTATION.md).
+The original full objective remains [PLAN.md](PLAN.md): complete π0, all ten
+Euler steps in one original VM launch, calibrated precision and matched
+end-to-end performance validation. Scheduling follows the user's clarification:
+static native instructions with data-specific counters, not a generic DAG
+executor layered over the VM.
 
-```bash
-python scripts/validate_nvfp4.py
-python benchmarks/native_primitives.py --workload expert --workers 20 64 148
-compute-sanitizer --tool memcheck --error-exitcode 1 \
-  python benchmarks/native_primitives.py --validation-only --output /tmp/native-fp4-validation.json
-```
+Reusable operators, packing, calibration utilities and standalone numerical
+checks remain under `native_pi0/` and `scripts/`. Shared DAG files retained for
+Cosmos compatibility are not part of the new π0 implementation.
 
-The primitive benchmark packs synthetic operands before timing and invokes one
-original Megakernels VM kernel per call. It records projection latency and
-checks CUDA launch count, dequantized-operand parity, and stream compatibility.
-It is not an end-to-end model or pretrained policy benchmark. Its CUDA-event
-interval includes host submission gaps from the Python/ctypes wrapper;
-synchronized wall samples are reported separately. `--workload vision` and
-`--workload prefix` select additional projection shapes. Use a distinct
-`--output` path when preserving different worker sweeps. Validation-only mode
-skips timing and CUPTI profiling, allowing use with compute-sanitizer.
-`--epilogue bf16`, `bias`, or `bias-residual` measures direct BF16 output and
-optional native fusion; `python scripts/validate_epilogues.py --profile`
-checks its numerical behavior and one-launch contract.
-`python scripts/validate_fp4_output.py --profile` checks direct FP4 output,
-including fused GELU and bias/residual terms against pinned CUDA references.
-Packed outputs use `ResidentNVFP4(output_dtype=torch.uint8)` and expose
-`output_scales` separately. `output_geglu=True` selects compact GeGLU for
-interleaved gate/up weights; `python scripts/validate_geglu.py --profile`
-checks full expert/prefix shapes using driver launch callbacks. `--k-tile
-128` or `256` selects larger native FP4 staging tiles in the primitive tools.
-`python scripts/validate_norm.py --profile` checks native RMSNorm/LayerNorm
-with optional residual addition, affine/AWQ scaling, and direct FP4/FP8 output.
-`--row-tile 1`, `4`, or `8` groups rows per VM instruction. The producer avoids
-a global normalized intermediate; complete model execution remains under development.
-Setup applies the recorded VM startup barrier patch in `native_pi0/patches`.
-Run `compute-sanitizer --tool synccheck --error-exitcode 1 python scripts/validate_vm.py`
-to check the patched VM lifecycle.
-
-`python scripts/validate_norm_projection.py --profile` checks a native
-normalization → NVFP4 projection chain in one VM launch. Its resident wrapper
-is `native_pi0.norm_projection.ResidentNormProjection`, with FP32 or BF16
-projection output. All CTAs can help produce FP4 rows; projection loaders wait
-on release/acquire readiness tags before TMA reads. `--producer-rows 1`, `4`,
-or `8` selects ownership granularity. Add `--benchmark-output PATH` to record
-matched one-launch and validation-only two-launch timings. Inputs and reused
-outputs stay on the GPU during forward. Each instance requires stream ordering;
-independent instances can run concurrently. Graph capture is unsupported by
-this development wrapper's host-generated epochs. This chain is not the full model.
-
-`python scripts/validate_dag.py --profile --report results/native_dag_scheduler.json`
-checks an opt-in VM instruction-fetch callback, device ready queue, and terminal
-instruction retirement. The scalar probe covers repeated epochs, fan-in/out,
-permuted graphs, and concurrent instances. Queue initialization occurs inside
-the native invocation. Setup also applies `megakernels-dynamic-instructions.patch`;
-static VM programs retain their original fetch path. Connecting native model
-operators to this scheduler remains in progress.
-
-`python scripts/validate_dag_matmul.py --profile --benchmark-output results/native_dag_matmul.json`
-checks dependent native matrix stages through that scheduler. Cases include
-compact GeGLU/down FFN cores at expert and prefix sizes, a padded vision GELU
-FFN core, bias/residual fusion, and a three-stage chain. `--node-order permuted`
-stress-tests task indexing; timing defaults to regular stage/tile order.
-The development `ResidentDagMatmul` wrapper binds resident FP4 stage outputs
-directly to their consumers. Add `--normalized-input` to begin with resident
-BF16/FP16 inputs and native residual + RMSNorm/LayerNorm → FP4, followed by
-the dependent FFN stages in the same launch. `--norm-rows 1`, `4`, or `8`
-selects rows per normalization task. The optional `ResidentNorm` is caller-owned
-and must outlive `ResidentDagMatmul`. Attention and full model execution remain
-incomplete. Current scheduling remains slower than the matched split-launch
-baseline; `results/native_dag_norm_ffn.json` records the normalized cases.
-
-`python scripts/validate_attention.py --profile --report results/native_attention.json`
-checks the FlashRT-derived native attention operator. `ResidentAttention` reads
-BF16/FP16 projection views and supports head dimensions 64, 72 and 256, GQA,
-bias, rotate-half RoPE, rectangular queries, boolean masks and the π0 suffix
-state/action visibility rule. Shared tiles use VM pages and consumer barriers;
-the operator uses the original VM's static instruction schedule. The validator
-compares against independent CPU FP32 math and actual pinned FlashRT kernels
-where their shapes apply. `--disable-fma` checks bit-exact source parity without
-FP32 FMA contraction; the normal build requires at most one output ULP and
-source NRMSE ≤ 0.0001. This operator is not yet connected to native projections
-or KV-cache generation, and does not constitute a transformer layer.
-`--kv-splits 8` enables native split-KV with FP32 partials and a last-producer
-merge in the same launch. The corresponding resident argument is `splits=8`.
-The measured 51-query BF16 expert benefits; already-parallel vision/prefix
-cases retain `splits=1`. Split instances use scalar epochs and reject CUDA
-graph capture. `--cached-merge` retains an experimental coefficient cache
-that regresses the measured cases and is disabled by default.
-
-`python scripts/validate_projection_attention.py --profile --report results/native_projection_attention.json`
-checks BF16/FP8 QKV projection → BF16 self-attention in one native launch.
-`ResidentDense` provides FP32/BF16 output with bias/residual fusion;
-`ResidentProjectionAttention` schedules its QKV row bands and dependent
-attention tiles, including GQA, masks, RoPE and split-KV. `--node-order permuted`
-stress-tests task mapping. The chain matches separate native stages on the
-tested shapes, but most representative cases remain slower than split launches.
-Add `--output-projection` to include a BF16 O projection with bias/residual in
-the same launch. Pass its caller-owned `ResidentDense` as `output_projection`
-to the wrapper; both projections must outlive it. Attention writes directly
-into that projection's padded input, without a conversion/copy kernel. The
-result has the dense logical shape `[batch * rows, output_width]`.
-Rotated KV-cache generation and complete transformer blocks remain incomplete.
+The previous sources and results are preserved in
+[archive/generic-executors-2026-10-28](archive/generic-executors-2026-10-28/ARCHIVE.md).
+Its manifest hashes the snapshot, and its restore script restores to a new
+directory without overwriting the active implementation. The old full-model
+reference failed numerical parity; its stage-counter successor skipped model
+execution, so its short timings are invalid.
 
 BF16 latency baselines for the full π0 model (SigLIP vision tower, Gemma 2B
 prefix, Gemma 300M action expert, ten Euler denoising steps):

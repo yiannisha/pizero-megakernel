@@ -1,0 +1,94 @@
+{
+  "timestamp_utc": "2026-10-28T02:03:13.607975+00:00",
+  "scope": "Standalone native VM attention operator; synthetic inputs; not an integrated transformer or pretrained model",
+  "checks": {
+    "unsplit": {
+      "memcheck": {
+        "errors": 0,
+        "cases": 12,
+        "concurrent_instances": 2,
+        "submitted_ctas": 200
+      },
+      "synccheck": {
+        "errors": 0,
+        "cases": 12,
+        "concurrent_instances": 2,
+        "submitted_ctas": 200
+      }
+    },
+    "split8": {
+      "memcheck": {
+        "errors": 0,
+        "cases": 12,
+        "concurrent_instances": 2,
+        "submitted_ctas": 200
+      },
+      "synccheck": {
+        "errors": 0,
+        "cases": 12,
+        "concurrent_instances": 2,
+        "submitted_ctas": 200
+      }
+    },
+    "split64_synccheck": {
+      "errors": 0,
+      "quick_cases": 5,
+      "concurrent_instances": 2
+    }
+  },
+  "normal_build_source_max_ulp": 1,
+  "normal_build_source_max_nrmse": 7.55766313886852e-06,
+  "fma_disabled_source_bit_exact_comparisons": 15,
+  "independent_fp32_max_nrmse": 0.004564354661852121,
+  "launches_per_forward": 1,
+  "two_forward_negative_control": 2,
+  "concurrent": {
+    "instances": 2,
+    "workers_per_instance": 100,
+    "submitted_ctas": 200,
+    "outputs": "bit-exact serial baselines",
+    "scope": "independent stream submissions; no active-overlap claim"
+  },
+  "split_replays": "Changed queries and NaN-poisoned partials; exact epoch/completion counts; fixed-order last-producer reduction",
+  "split_partition_stress": [
+    2,
+    13,
+    15,
+    16,
+    32,
+    64
+  ],
+  "cached_merge_boundary_quick_checks": [
+    15,
+    16
+  ],
+  "capture_rejection": "CUDA error 900 before epoch advance; normal subsequent forward succeeds",
+  "source_sha256": {
+    "native_pi0/attention.cu": "fb3403d156c3e726311fcdb9977926749881aa5dda08876c1e11fc6319313eb2",
+    "native_pi0/attention.py": "3aa9df96a6f4838b126e4c5d9369ccfce24b4d19e0bef651941947d9c3732bf6",
+    "native_pi0/attention_reference.cu": "ddca2a0a6f87b8e1d7c6a2dba60791dbb57443a6c37cd18baac49b4e6b086084",
+    "scripts/validate_attention.py": "ad6156d5503b9d5f4ba169efe0d44f7581a4e50af014533e56801c9b482f0ec5",
+    "native_pi0/launch_trace.cpp": "9a0d9d5d28c9a34a29061c42a0698bb5cd8c56c008513e776f69bde72406842b",
+    "native_pi0/launch_trace.py": "ffedfd8343fe6ded829a8a33d884d0e07056fd9dbcf06698bcffbfbef1387f1e",
+    "third_party/FlashRT/csrc/kernels/fused_qkv_attention.cu": "94ba019e90d557e5f80aef8b8d86c49c679d0b1d883ed2f1133c449b489ba2c3",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859",
+    "third_party/Megakernels/include/util.cuh": "052947e9ce2b62eeb330c6bbe522f9e876ae6023705c7bcb217338b0d0f7bd3c",
+    "third_party/Megakernels/include/config.cuh": "370b5d4a5c54cd3a2e8283e7edd8f612e0e245e14888912f51ccfff8f75550d9",
+    "third_party/Megakernels/include/noop.cuh": "4b58e283e77ba18f756d225f5659b6ff1463479c7e3930435d0e3695b9d60df7",
+    "third_party/Megakernels/include/controller/controller.cuh": "ee78770ea4eda3c7247785263b7e1b0416d16e78bb179631bbd5eaee4fe40f2d",
+    "third_party/Megakernels/include/controller/instruction_fetch.cuh": "6f97f7cc2c9a1f83cdce385984415f8fdfbb3d3b293f7e585f8fecc4f132ee64"
+  },
+  "reports": [
+    "results/native_attention.json",
+    "results/native_attention_split8.json",
+    "results/native_attention_split8_cached_merge.json",
+    "results/native_attention_no_fma.json"
+  ],
+  "execution": "Sanitizer and partition sweeps reused matching built extensions; standard CLI commands rebuild from the recorded source. Profiling runs were repeated separately from sanitizer checks.",
+  "limitations": [
+    "Standalone attention operator; no projection/KV-cache producer integration",
+    "Split-KV benefits measured BF16 expert shape, regresses already-parallel cases",
+    "Synthetic inputs; no pretrained layer/action/rollout parity",
+    "No end-to-end speedup or SOTA claim"
+  ]
+}

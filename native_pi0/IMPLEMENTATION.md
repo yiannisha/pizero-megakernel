@@ -1,0 +1,97 @@
+# Native π0 implementation decision
+
+The objective remains the complete PLAN.md. The user clarified the execution
+architecture on 2026-10-28: adapt the Hazy VM as the Gemma implementation does,
+with native tile-range instructions, static per-worker streams, and direct
+producer counters. A generic task/DAG executor is not the model runtime.
+
+## Keep and reuse
+
+| Component | Use |
+|---|---|
+| Megakernels VM controller/loader/launcher/consumer/storer | Original runtime and static instruction fetch |
+| Gemma `model.py`, `native.cu`, `fused.cuh`, `attention.cuh` | Scheduling, range-loop, fusion and dependency reference |
+| BF16/FP8 TMA/TCGen05 and NVFP4 math | Reusable implementations; integrate into native range operators |
+| RMSNorm/LayerNorm, attention, packing and epilogue references | Numerical algorithms and independent checks |
+| OpenPI backend and BF16 model benchmarks | Same-weight model oracle and end-to-end comparison |
+| Weight packing and calibration utilities | Offline setup; no host model operations in forward |
+| Complete model wiring from the failed reference | Archived source to reuse for architecture, shapes and weights |
+
+## Retire from the active path
+
+| Component | Reason |
+|---|---|
+| Generic ready queue and dependency-group executors | Per-tile dispatch and serial fan-out replace native scheduling |
+| `RefWork` stage-counter dispatcher | Another custom fetch loop; not the requested instruction program |
+| Generic projection/attention, block and stack wrappers | Tied to the retired executor |
+| Worker sweeps and synthetic-chain timing reports | Historical component evidence, not model acceptance |
+| Failed full-model reference backend | Output parity failed; preserve as debugging evidence |
+
+`archive/generic-executors-2026-10-28/MANIFEST.json` records exact retired paths
+and source hashes. The complete snapshot includes helpers needed to reproduce
+the old work. `restore.py NEW_DIRECTORY` restores independently.
+
+`dag_probe.*`, `dag_scheduler.cuh` and `dag_matmul.*` remain at their original
+paths because the separate Cosmos project imports them. New π0 native code must
+not import or include them. Cosmos sources and dependency pins are untouched.
+The optional dynamic-fetch VM patch remains installed for that compatibility;
+the new π0 globals must use the original static fetch branch.
+
+## Native instruction contract
+
+The host emits fixed 32-word instructions into static worker streams. An
+instruction owns an operation-specific tile range (`first`, `count`), rather
+than reserving a new global queue ticket for each tile. The operation's loader,
+launcher, consumer and storer loop through that range using the native page and
+semaphore pipeline. Per-tile phases continue across the instruction; TMEM is
+released once when the instruction finishes.
+
+Producer counters describe tensor row bands, Q/K/V heads or FFN input chunks.
+Consumers acquire the counters for data they actually read. Producers publish
+completed chunks with release semantics after all writers and proxy fences.
+There is no generic indegree/ready-list structure or global stage dispatcher.
+
+The instruction-memory view indexes logical worker/CTA IDs. This avoids
+depending on dense physical SM IDs while leaving the VM's static fetch code
+unchanged. Worker count is bounded by measured native occupancy/SM capacity.
+Static program and dependency validation must reject cycles and missing ranges.
+
+## Execution order and gates
+
+1. Implement and verify native range pipelines and direct data counters.
+2. Reuse the model wiring to integrate the complete BF16 vision, prefix,
+   expert, heads and ten Euler steps. Do not resume precision/worker sweeps
+   before this full reference exists and passes numerical checks.
+3. Compare the complete forward against the same OpenPI weights and inputs;
+   verify one original VM launch, changed-input replay and memory safety.
+4. Measure isolated full-model latency against eager, compiled and graph Torch,
+   realtime-vla and a comparable FlashRT implementation. Then optimize and
+   introduce calibrated precision using the PLAN.md requirements.
+
+The previous 1.08 s run was contaminated by another CUDA context and failed
+output parity (~3.4% action NRMSE). The last stage-counter trial returned zero
+outputs (NRMSE 1.0), so its ~0.076 ms timing is invalid. Neither is acceptance.
+Gemma's vLLM win is a one-token decode result; its scheduling and fusion design
+is relevant, while π0's batched prefix/expert shapes still require adaptation.
+
+No M0–M9 milestone or SOTA claim is complete.
+
+## Full static-stream backend
+
+`model.py` and `model.cu` now wire the full BF16 model through the static VM:
+27 vision layers, 18 prefix layers, 18 expert layers for each of ten steps,
+FP32 input/output/time heads, and Euler updates. `NativePi0` owns the fixed
+instruction streams and data counters; forward passes only root input pointers
+and launches `megakernel::mk<..., NativeModelGlobals, ...>` once.
+
+The initial full run is recorded in `results/native_pi0_static_full.json`:
+one original VM kernel, nonzero complete actions, action NRMSE 0.03443 against
+same-weight OpenPI. This fails the existing numerical gate. It is evidence of
+complete execution, not accuracy or performance acceptance. Vision attention
+is the first material numerical discrepancy and is being corrected in the
+complete model path. No standalone operator campaign is required to continue.
+
+The initial program contains 2,544 operations and 109,510 native range
+instructions covering 189,552 compute tiles. These are precompiled streams,
+not dynamically dispatched tasks. Further fusion is still required; merely
+removing a queue does not establish good end-to-end performance.

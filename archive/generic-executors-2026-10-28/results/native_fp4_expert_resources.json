@@ -1,0 +1,235 @@
+{
+  "scope": "one synthetic NVFP4 projection, not a model or calibrated policy benchmark",
+  "timestamp_utc": "2026-10-27T21:13:11.204779+00:00",
+  "workload": "expert",
+  "mma_pipeline": "serial",
+  "shape": {
+    "m": 51,
+    "padded_m": 128,
+    "n": 2560,
+    "k": 1024
+  },
+  "precision": "W4A4 E2M1, UE4M3 per16, FP32 accumulation/output; nearest activation scales, ceil weight scales",
+  "timed_boundary": "GPU-resident packed operands to reused GPU output; excludes setup, packing, transfers, correctness and profiling",
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "torch": "2.8.0+cu128",
+    "cuda": "12.8"
+  },
+  "upstreams": {
+    "openpi": {
+      "url": "https://github.com/Physical-Intelligence/openpi.git",
+      "rev": "215abfb217dbac7d5f1273282331b9b1866c0479"
+    },
+    "realtime-vla": {
+      "url": "https://github.com/dexmal/realtime-vla.git",
+      "rev": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"
+    },
+    "Megakernels": {
+      "url": "https://github.com/yiannisha/Megakernels.git",
+      "rev": "08a7136cdfaa7e40629b65234d46cffcd7d48b00"
+    },
+    "FlashRT": {
+      "url": "https://github.com/flashrt-project/FlashRT.git",
+      "rev": "60054d253dcada1dab5e7c0ff68111f935ee41ca"
+    },
+    "cutlass": {
+      "url": "https://github.com/NVIDIA/cutlass.git",
+      "rev": "da5e086dab31d63815acafdac9a9c5893b1c69e2"
+    }
+  },
+  "source_sha256": {
+    "native_pi0/nvfp4_probe.cu": "2734ed3e63512aea58d59143d557d0ca5eade599a7cd96731427239b7850da60",
+    "native_pi0/tcgen_probe.cu": "af1973ea832980b1128c6e73fb830307db69b848a3e1783378856048b52e59ae",
+    "native_pi0/primitives.py": "139c39a02740e1957f9309dcad959dd337dad5a4b0648af72225502deda3d84c",
+    "benchmarks/native_primitives.py": "a8102420fd9444c2f66b4512aae0e0d2b2e39e23dc0495bb8db95a89d79dac64"
+  },
+  "results": [
+    {
+      "workers": 20,
+      "gpu": {
+        "median_ms": 0.11991999670863152,
+        "p10_ms": 0.11894399747252464,
+        "p90_ms": 0.12196479737758636,
+        "samples_ms": [
+          0.1401599943637848,
+          0.12300799787044525,
+          0.12188799679279327,
+          0.12086399644613266,
+          0.12060800194740295,
+          0.12006399780511856,
+          0.12041600048542023,
+          0.12156800180673599,
+          0.11999999731779099,
+          0.12265600264072418,
+          0.11964800208806992,
+          0.12089599668979645,
+          0.11984000355005264,
+          0.11990399658679962,
+          0.11897599697113037,
+          0.11849600076675415,
+          0.11948800086975098,
+          0.11926399916410446,
+          0.11859200149774551,
+          0.12035199999809265,
+          0.11999999731779099,
+          0.11974400281906128,
+          0.11980800330638885,
+          0.11980800330638885,
+          0.11865600198507309,
+          0.11980800330638885,
+          0.11952000111341476,
+          0.1207360029220581,
+          0.11987199634313583,
+          0.11993599683046341
+        ]
+      },
+      "synchronized_wall": {
+        "median_ms": 0.1356945,
+        "p10_ms": 0.1346099,
+        "p90_ms": 0.1378105,
+        "samples_ms": [
+          0.171314,
+          0.14045,
+          0.138004,
+          0.137273,
+          0.136217,
+          0.136323,
+          0.136666,
+          0.136923,
+          0.135837,
+          0.137789,
+          0.135025,
+          0.136321,
+          0.135689,
+          0.13511,
+          0.134614,
+          0.134381,
+          0.135221,
+          0.134861,
+          0.134036,
+          0.135793,
+          0.135464,
+          0.134612,
+          0.13481,
+          0.135346,
+          0.134591,
+          0.135185,
+          0.135187,
+          0.136252,
+          0.1357,
+          0.13583
+        ]
+      },
+      "resources": {
+        "registers_per_thread": 96,
+        "static_shared_bytes": 10400,
+        "dynamic_shared_bytes": 216504,
+        "local_bytes_per_thread": 808,
+        "predicted_max_ctas_per_sm": 1,
+        "threads_per_cta": 640,
+        "max_threads_per_sm": 2048,
+        "sm_count": 148
+      },
+      "cuda_launch_count": 1,
+      "kernel_names": [
+        "void megakernel::mk<megakernel::default_config, Fp4Globals, Fp4Matmul>(Fp4Globals)"
+      ],
+      "profiled_kernel_duration_us": 106.78299999999996,
+      "nrmse_vs_dequantized": 0.0
+    },
+    {
+      "workers": 148,
+      "gpu": {
+        "median_ms": 0.12377599999308586,
+        "p10_ms": 0.12242560088634491,
+        "p90_ms": 0.12556800246238708,
+        "samples_ms": [
+          0.14188799262046814,
+          0.12556800246238708,
+          0.12464000284671783,
+          0.1234240010380745,
+          0.12412799894809723,
+          0.1239359974861145,
+          0.12531200051307678,
+          0.12383999675512314,
+          0.1234240010380745,
+          0.12352000176906586,
+          0.12387199699878693,
+          0.12383999675512314,
+          0.12457600235939026,
+          0.12361600250005722,
+          0.12707200646400452,
+          0.12556800246238708,
+          0.12316799908876419,
+          0.12307199835777283,
+          0.12438400089740753,
+          0.12438400089740753,
+          0.12336000055074692,
+          0.12214399874210358,
+          0.12291199713945389,
+          0.12243200093507767,
+          0.12243200093507767,
+          0.12236800044775009,
+          0.12444800138473511,
+          0.12211199849843979,
+          0.12281599640846252,
+          0.12371200323104858
+        ]
+      },
+      "synchronized_wall": {
+        "median_ms": 0.14061200000000001,
+        "p10_ms": 0.1391944,
+        "p90_ms": 0.1429447,
+        "samples_ms": [
+          0.173737,
+          0.143963,
+          0.141562,
+          0.141045,
+          0.140698,
+          0.140907,
+          0.141686,
+          0.140397,
+          0.140175,
+          0.140687,
+          0.140144,
+          0.141133,
+          0.141107,
+          0.140309,
+          0.143554,
+          0.142877,
+          0.140382,
+          0.14039,
+          0.141089,
+          0.141556,
+          0.139926,
+          0.1384,
+          0.140037,
+          0.139197,
+          0.139171,
+          0.13914,
+          0.141499,
+          0.139824,
+          0.139525,
+          0.140537
+        ]
+      },
+      "resources": {
+        "registers_per_thread": 96,
+        "static_shared_bytes": 10400,
+        "dynamic_shared_bytes": 216504,
+        "local_bytes_per_thread": 808,
+        "predicted_max_ctas_per_sm": 1,
+        "threads_per_cta": 640,
+        "max_threads_per_sm": 2048,
+        "sm_count": 148
+      },
+      "cuda_launch_count": 1,
+      "kernel_names": [
+        "void megakernel::mk<megakernel::default_config, Fp4Globals, Fp4Matmul>(Fp4Globals)"
+      ],
+      "profiled_kernel_duration_us": 110.143,
+      "nrmse_vs_dequantized": 0.0
+    }
+  ]
+}

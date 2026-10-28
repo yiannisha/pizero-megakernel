@@ -1,0 +1,34 @@
+{
+  "openpi": {
+    "url": "https://github.com/Physical-Intelligence/openpi.git",
+    "rev": "215abfb217dbac7d5f1273282331b9b1866c0479"
+  },
+  "realtime-vla": {
+    "url": "https://github.com/dexmal/realtime-vla.git",
+    "rev": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"
+  },
+  "Megakernels": {
+    "url": "https://github.com/yiannisha/Megakernels.git",
+    "rev": "08a7136cdfaa7e40629b65234d46cffcd7d48b00"
+  },
+  "FlashRT": {
+    "url": "https://github.com/flashrt-project/FlashRT.git",
+    "rev": "60054d253dcada1dab5e7c0ff68111f935ee41ca"
+  },
+  "cutlass": {
+    "url": "https://github.com/NVIDIA/cutlass.git",
+    "rev": "da5e086dab31d63815acafdac9a9c5893b1c69e2"
+  },
+  "cosmos": {
+    "url": "https://github.com/NVIDIA/cosmos.git",
+    "rev": "0c9e2f1330b235c87dc77d7af489c78a901c4c9e"
+  },
+  "Cosmos3-Edge": {
+    "url": "https://huggingface.co/nvidia/Cosmos3-Edge",
+    "rev": "344d602b128d1bbdacb43b08d0a3626f46343e29"
+  },
+  "cosmos-framework": {
+    "url": "https://github.com/NVIDIA/cosmos-framework.git",
+    "rev": "cc28c0c36bf8f39d5d0a7afe71e237178f180155"
+  }
+}

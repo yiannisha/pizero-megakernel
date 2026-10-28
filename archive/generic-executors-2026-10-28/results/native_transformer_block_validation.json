@@ -1,0 +1,68 @@
+{
+  "timestamp_utc": "2026-10-28T03:59:55.832197+00:00",
+  "scope": "One RMS pre-norm attention and NVFP4 GeGLU block; synthetic inputs, no checkpoint or end-to-end claim",
+  "source_sha256": {
+    "native_pi0/validate_quantization.cu": "4d5bf3b735118fbd978aed5ec7c0a4c91dcea340b11d8b7b585aa797f23effda",
+    "native_pi0/vm_probe.cu": "24ddf8a7725f3fac30858423aec10365eaa3f4bd0f2f34448f984b795ecf7c7c",
+    "native_pi0/tcgen_probe.cu": "9673c7008b47e9790e8197a9cb8910e89aefae2a5a7e4f248101ea5ae25a84a5",
+    "native_pi0/nvfp4_probe.cu": "ab2582c546114883388a7b7b647d4daf641e46b546a196aa0eca57b490da2456",
+    "native_pi0/fp4_output_reference.cu": "a26334c038d3188b5805fc210c62163c0aab3be1366224e2c6dd346d00acb72e",
+    "native_pi0/norm.cu": "6a8b2fdebe2737f8c00fc1e091df44c211771efa5c504b1af1d3344697777733",
+    "native_pi0/norm_reference.cu": "3b3008bf5c67ae55efa748ab16bd20f1102d30170e52e30eed0a5e2a2bc54f56",
+    "native_pi0/barrier_init_probe.cu": "a8d37880d56e191aacf4c3490ad5b8909c8ff4a2985bfb84d759fbcf4b5b001f",
+    "native_pi0/norm_projection.cu": "399ca2a48b200961113e793a37106e341d55b3a775ddaca2c269c93273858494",
+    "native_pi0/dag_probe.cu": "c459d6f6b12f32139cf3d9aa68272c12939e10d84b37ea3c32edb1efac57e966",
+    "native_pi0/dag_matmul.cu": "f5bc02e101705f8b64b4d54bd44686a95505415bad345feb0ee6272ab51907c7",
+    "native_pi0/attention.cu": "7f2f6ccea954716ed293afaa16917884a380ee703593a49027293340da04c534",
+    "native_pi0/attention_reference.cu": "ddca2a0a6f87b8e1d7c6a2dba60791dbb57443a6c37cd18baac49b4e6b086084",
+    "native_pi0/dense.cu": "b49320258b9b0fba3a49cd8a77b8501a83d9919f51ecd846774401fc9613c929",
+    "native_pi0/projection_attention.cu": "f08cf802eff7294894b59fc626b084df0f956510d435734861088d6ff51a225e",
+    "native_pi0/transformer_block.cu": "16dafe337d5d24509fc6121bde97cdbeb92375f75b74c61537c5432bfb96d697",
+    "native_pi0/transformer_block.py": "44ea7fea980c3366a169f1538c993cbe6c9e4e93a09a5ca338c704d2fa0a0a24",
+    "native_pi0/normalization.py": "f9c780c6933c496bbe8d23150c0fadc76dec3186595939e12ee77d95c2c4b4ad",
+    "native_pi0/dense.py": "caba830a5d15aebdaf951b4662902fdcca02ed1259118e19c0f68f47c25595f0",
+    "native_pi0/primitives.py": "0f846db8ac8800c4cddd410fa1f53fb1c203922e4d3e0d679dea685d2fd6ecf7",
+    "native_pi0/projection_attention.py": "1d92b7c7d02ccebfe9d5132cea9a4074f3446cc986580a38c32759da7f782c2a",
+    "native_pi0/attention.py": "df5cedfcd3b38a246ea28e7930e339e52b3a760bff151def1d3e1d0b7e0aeebb",
+    "native_pi0/dag_probe.py": "0a1df5966cb08d1b44c0752d140264d624c60e93087bb4a4cedf744320423c3d",
+    "native_pi0/dag_scheduler.cuh": "f3ed6f1ea144c32e12450ab8a5ba72cfa8452ae54dc2bdfb50459f81632dcbdc",
+    "scripts/validate_transformer_block.py": "e2815bf2de84de20aba7466dd775c1498c888342fe54ac5a349260c07500a38a",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859"
+  },
+  "library_sha256": "b6967ecfcf553da5250ff5aacefb4f2fc83e14eb64a01315e09cece16312fbde",
+  "resource_usage": [
+    "REG:200 STACK:2848 SHARED:11424 LOCAL:0 CONSTANT[2]:196 CONSTANT[0]:1168 TEXTURE:0 SURFACE:0 SAMPLER:0"
+  ],
+  "reports": [
+    "results/native_transformer_block.json",
+    "results/native_transformer_block_permuted.json",
+    "results/native_transformer_block_legacy_regression.json"
+  ],
+  "ordered_permuted": "all four final output hashes exact",
+  "sanitizers": {
+    "memcheck": {
+      "errors": 0,
+      "command": "compute-sanitizer --tool memcheck --error-exitcode 99 python scripts/validate_transformer_block.py --library /tmp/native-transformer-block/transformer_block.so",
+      "output": "========= COMPUTE-SANITIZER\nsmall-bf16 complete block exact vs split {'pre_norm': 0.0, 'qkv': 0.0, 'attention': 0.002061138628050685, 'o_residual': 0.0, 'post_norm': 0.0, 'gate_geglu': 0.0, 'down_residual': 0.0}\nbatch-tail-fp8 complete block exact vs split {'pre_norm': 0.0, 'qkv': 0.0, 'attention': 0.002278809202834964, 'o_residual': 0.0, 'post_norm': 0.0, 'gate_geglu': 0.0, 'down_residual': 0.0}\nexpert-core complete block exact vs split {'pre_norm': 0.0002711332344915718, 'qkv': 0.0, 'attention': 0.002750278450548649, 'o_residual': 3.4158369089709595e-05, 'post_norm': 0.0, 'gate_geglu': 0.0, 'down_residual': 0.0}\nprefix-core complete block exact vs split {'pre_norm': 0.00020026715355925262, 'qkv': 0.0, 'attention': 0.002984827384352684, 'o_residual': 1.725226320559159e-05, 'post_norm': 0.0005788830458186567, 'gate_geglu': 0.0002411746245343238, 'down_residual': 0.0}\n========= ERROR SUMMARY: 0 errors\n"
+    },
+    "synccheck": {
+      "errors": 0,
+      "command": "compute-sanitizer --tool synccheck --error-exitcode 99 python scripts/validate_transformer_block.py --library /tmp/native-transformer-block/transformer_block.so",
+      "output": "========= COMPUTE-SANITIZER\nsmall-bf16 complete block exact vs split {'pre_norm': 0.0, 'qkv': 0.0, 'attention': 0.002061138628050685, 'o_residual': 0.0, 'post_norm': 0.0, 'gate_geglu': 0.0, 'down_residual': 0.0}\nbatch-tail-fp8 complete block exact vs split {'pre_norm': 0.0, 'qkv': 0.0, 'attention': 0.002278809202834964, 'o_residual': 0.0, 'post_norm': 0.0, 'gate_geglu': 0.0, 'down_residual': 0.0}\nexpert-core complete block exact vs split {'pre_norm': 0.0002711332344915718, 'qkv': 0.0, 'attention': 0.002750278450548649, 'o_residual': 3.4158369089709595e-05, 'post_norm': 0.0, 'gate_geglu': 0.0, 'down_residual': 0.0}\nprefix-core complete block exact vs split {'pre_norm': 0.00020026715355925262, 'qkv': 0.0, 'attention': 0.002984827384352684, 'o_residual': 1.725226320559159e-05, 'post_norm': 0.0005788830458186567, 'gate_geglu': 0.0002411746245343238, 'down_residual': 0.0}\n========= ERROR SUMMARY: 0 errors\n"
+    }
+  },
+  "legacy_default_epilogue_regression": {
+    "dense_cases": 12,
+    "attention_sublayers": 6,
+    "separate_stage_outputs": "bit-exact"
+  },
+  "baseline": "Five split native launches; no external end-to-end performance comparison",
+  "acceptance": "Component correctness passes; performance target and all M0-M9 milestone acceptance remain open",
+  "remaining": [
+    "full prefix/expert layer stacks and final norms",
+    "vision blocks and embeddings",
+    "state/action/time heads, Euler update and ten-step device execution",
+    "calibrated pretrained model parity and rollouts",
+    "skinny GEMM and scheduler performance, end-to-end baseline comparisons"
+  ]
+}
