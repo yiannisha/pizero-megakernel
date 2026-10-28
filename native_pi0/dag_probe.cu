@@ -4,6 +4,8 @@
 #include "dag_scheduler.cuh"
 #include <vector>
 #include <climits>
+#include <map>
+#include <algorithm>
 struct DagConfig:megakernel::default_config {
     static constexpr int NUM_CONSUMER_WARPS=4,NUM_WARPS=8,NUM_THREADS=256,CONSUMER_REGISTERS=128;
 };
@@ -23,8 +25,9 @@ struct DagGlobals {
     unsigned long long *starts,*ends;
     unsigned seed;
     __device__ void fetch_instruction(int* instruction,int index)const{
+        if(index==0)queue.initialize_warp();
         if(kittens::laneid()==0){
-            int node=queue.claim();
+            int node=queue.claim(false);
             instruction[0]=node<0?-1:1;instruction[1]=node;
             if(node<0)exits[blockIdx.x]=index;
         }
@@ -57,6 +60,7 @@ struct DagProbeContext {
     DagGlobals globals;
     int workers,device;
     unsigned epoch=0;
+    int dependency_links=0;
     std::vector<void*> allocations;
 };
 extern "C" int create_dag_probe(void** handle,int nodes,int edges,int root_count,int workers,
@@ -76,13 +80,39 @@ extern "C" int create_dag_probe(void** handle,int nodes,int edges,int root_count
     if(error==cudaSuccess){dag_slots<<<1,32>>>(slots_dev);error=cudaGetLastError();}
     if(error==cudaSuccess)error=cudaMemcpy(&slots,slots_dev,sizeof(int),cudaMemcpyDeviceToHost);
     int* po=static_cast<int*>(upload(parent_offsets,size_t(nodes+1)*4));
-    int* co=static_cast<int*>(upload(child_offsets,size_t(nodes+1)*4));
     int* pp=edges?static_cast<int*>(upload(parents,size_t(edges)*4)):nullptr;
-    int* cc=edges?static_cast<int*>(upload(children,size_t(edges)*4)):nullptr;
     int* rr=static_cast<int*>(upload(roots,size_t(root_count)*4));
     int* dd=static_cast<int*>(upload(delays,size_t(nodes)*4));
-    std::vector<int> indegree(nodes);for(int n=0;n<nodes;++n)indegree[n]=parent_offsets[n+1]-parent_offsets[n];
-    int* ii=static_cast<int*>(upload(indegree.data(),size_t(nodes)*4));
+    // Readiness depends on parent sets, even if a node's math uses parent order.
+    // Consumers with identical prerequisites can share one completion counter.
+    std::map<std::vector<int>,int> group_lookup;
+    std::vector<int> indegree;
+    std::vector<std::vector<int>> release_groups(nodes),ready_nodes;
+    for(int node=0;node<nodes;++node){
+        if(parent_offsets[node]==parent_offsets[node+1])continue;
+        std::vector<int> key(parents+parent_offsets[node],parents+parent_offsets[node+1]);
+        std::sort(key.begin(),key.end());int group=-1;
+#if NATIVE_DAG_COALESCE_DEPENDENCIES
+        auto found=group_lookup.find(key);if(found!=group_lookup.end())group=found->second;
+#endif
+        if(group<0){
+            group=int(indegree.size());group_lookup[key]=group;indegree.push_back(int(key.size()));ready_nodes.emplace_back();
+            for(int parent:key)release_groups[parent].push_back(group);
+        }
+        ready_nodes[group].push_back(node);
+    }
+    int group_count=int(indegree.size());if(indegree.empty())indegree.push_back(0);
+    auto csr=[](const std::vector<std::vector<int>>& rows){
+        std::pair<std::vector<int>,std::vector<int>> result;result.first.push_back(0);
+        for(const auto& row:rows){result.second.insert(result.second.end(),row.begin(),row.end());result.first.push_back(int(result.second.size()));}
+        return result;
+    };
+    auto releases=csr(release_groups),ready=csr(ready_nodes);
+    int* co=static_cast<int*>(upload(releases.first.data(),releases.first.size()*4));
+    int* cc=releases.second.empty()?nullptr:static_cast<int*>(upload(releases.second.data(),releases.second.size()*4));
+    int* ro=static_cast<int*>(upload(ready.first.data(),ready.first.size()*4));
+    int* rn=ready.second.empty()?nullptr:static_cast<int*>(upload(ready.second.data(),ready.second.size()*4));
+    int* ii=static_cast<int*>(upload(indegree.data(),indegree.size()*4));
     auto* control=static_cast<native_pi0::DagControl*>(alloc(sizeof(native_pi0::DagControl)));
     auto* remaining=static_cast<unsigned long long*>(alloc(size_t(nodes)*8));
     auto* queue=static_cast<unsigned long long*>(alloc(size_t(nodes)*8));
@@ -102,8 +132,8 @@ extern "C" int create_dag_probe(void** handle,int nodes,int edges,int root_count
     if(error==cudaSuccess)error=cudaFuncSetAttribute(kernel,cudaFuncAttributeMaxDynamicSharedMemorySize,DagConfig::DYNAMIC_SHARED_MEMORY);
     if(error==cudaSuccess){
         DagGlobals g{megakernel::instruction_layout<DagConfig>(nullptr,nullptr,slots,nodes+1,nullptr),RingTimings{timing},
-            native_pi0::DagScheduler{control,remaining,queue,ii,co,cc,rr,nodes,root_count,0},po,pp,dd,values,owners,ordinals,exits,visits,starts,ends,0};
-        *handle=new DagProbeContext{g,workers,device,0,std::move(allocations)};
+            native_pi0::DagScheduler{control,remaining,queue,ii,co,cc,rr,ro,rn,nodes,root_count,group_count,0},po,pp,dd,values,owners,ordinals,exits,visits,starts,ends,0};
+        *handle=new DagProbeContext{g,workers,device,0,int(releases.second.size()),std::move(allocations)};
     }else for(void* p:allocations)cudaFree(p);
     return error;
 }
@@ -155,5 +185,11 @@ extern "C" int dag_probe_resources(int* values,int count){
     values[0]=blocks;values[1]=properties.multiProcessorCount;
     values[2]=attributes.sharedSizeBytes;values[3]=DagConfig::DYNAMIC_SHARED_MEMORY;
     values[4]=attributes.numRegs;values[5]=attributes.localSizeBytes;
+    return cudaSuccess;
+}
+extern "C" int dag_probe_plan(void* handle,int* values,int count){
+    if(!handle||!values||count<3)return cudaErrorInvalidValue;
+    const auto& c=*static_cast<DagProbeContext*>(handle);
+    values[0]=c.globals.queue.groups;values[1]=c.dependency_links;values[2]=c.globals.queue.nodes;
     return cudaSuccess;
 }

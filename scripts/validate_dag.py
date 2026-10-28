@@ -47,6 +47,11 @@ def validate(probe,result,seed):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile',action='store_true')
+    parser.add_argument('--baseline-queue',action='store_true',help='Retain no-op atomic polls and individual root releases for comparison')
+    parser.add_argument('--idle-sleep-ns',type=int,choices=(32,128,512,1024),default=512)
+    parser.add_argument('--cas-decrement',action='store_true')
+    parser.add_argument('--uncoalesced-dependencies',action='store_true')
+    parser.add_argument('--single-lane-bootstrap',action='store_true')
     parser.add_argument('--report',type=Path)
     args=parser.parse_args()
     if args.report and not args.profile:parser.error('Reports require --profile launch gates')
@@ -54,6 +59,11 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         library=Path(directory)/'dag.so'
         subprocess.run(['nvcc','-O3','-lineinfo','-std=c++20','-arch=sm_100a','-DKITTENS_HOPPER','-DKITTENS_BLACKWELL',
+            '-DNATIVE_DAG_BASELINE_QUEUE='+str(int(args.baseline_queue)),
+            '-DNATIVE_DAG_IDLE_SLEEP_NS='+str(args.idle_sleep_ns),
+            '-DNATIVE_DAG_CAS_DECREMENT='+str(int(args.cas_decrement)),
+            '-DNATIVE_DAG_COALESCE_DEPENDENCIES='+str(int(not args.uncoalesced_dependencies)),
+            '-DNATIVE_DAG_WARP_BOOTSTRAP='+str(int(not args.single_lane_bootstrap)),
             '--expt-relaxed-constexpr','--expt-extended-lambda','-I'+str(ROOT/'third_party/Megakernels/include'),
             '-I'+str(ROOT/'third_party/Megakernels/ThunderKittens/include'),'-shared','-Xcompiler','-fPIC',
             str(ROOT/'native_pi0/dag_probe.cu'),str(ROOT/'native_pi0/launch_trace.cpp'),'-lcupti','-Xlinker','-rpath',
@@ -97,7 +107,7 @@ def main():
                     seed=1000+case_index*3+replay
                     stream=torch.cuda.Stream();probe.forward(seed,stream);stream.synchronize()
                     replays.append(validate(probe,probe.read(),seed))
-                record={'name':name,'nodes':len(graph),'edges':sum(map(len,graph)),'roots':len(probe.roots),'workers':workers,'replays':replays}
+                record={'name':name,'nodes':len(graph),'edges':sum(map(len,graph)),'roots':len(probe.roots),'workers':workers,'replays':replays,'plan':probe.plan}
                 if args.profile:
                     with LaunchTrace(library) as trace:probe.forward(91);torch.cuda.synchronize()
                     assert trace.count==1 and 'megakernel' in trace.symbol,(trace.count,trace.symbol)
@@ -130,7 +140,10 @@ def main():
                  'native_pi0/patches/megakernels-serial-barrier-init.patch','third_party/Megakernels/include/megakernel.cuh',
                  'third_party/Megakernels/include/util.cuh','third_party/Megakernels/include/controller/controller.cuh',
                  'third_party/Megakernels/include/controller/instruction_fetch.cuh']
-        report={'timestamp_utc':datetime.datetime.now(datetime.UTC).isoformat(),'seed':101,
+        report={'timestamp_utc':datetime.datetime.now(datetime.UTC).isoformat(),'seed':101,'baseline_queue':args.baseline_queue,'idle_sleep_ns':args.idle_sleep_ns,
+                'cas_decrement':args.cas_decrement,
+                'uncoalesced_dependencies':args.uncoalesced_dependencies,
+                'single_lane_bootstrap':args.single_lane_bootstrap,
                 'scope':'Scalar DAG scheduling and VM retirement probe, not GEMM/model or pretrained validation',
                 'mechanism':'MPMC ready queue; lazy epoch dependency counters; resident initializer; dynamic VM fetch and terminal slot',
                 'initialization':'Inside the single native invocation; no GPU reset kernel/copy in forward',

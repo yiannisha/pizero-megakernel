@@ -61,6 +61,12 @@ class ResidentDagProbe:
         with torch.cuda.device(self.device):
             error=create(ctypes.byref(self.handle),n,len(pp),len(roots),workers,*[a.ctypes.data for a in (po,pp,co,cc,roots,self.delays)])
         if error:raise RuntimeError(f'DAG probe setup CUDA error {error}')
+        plan=self.library.dag_probe_plan;plan.argtypes=[ctypes.c_void_p,ctypes.c_void_p,ctypes.c_int];plan.restype=ctypes.c_int
+        values=np.empty(3,dtype=np.int32);error=plan(self.handle,values.ctypes.data,len(values))
+        if error:
+            self.close();raise RuntimeError(f'DAG probe plan CUDA error {error}')
+        self.plan={'dependency_groups':int(values[0]),'dependency_updates':int(values[1]),'nodes':int(values[2]),
+                   'logical_edges':int(sum(map(len,self.parents)))}
 
     def forward(self,seed=0,stream=None):
         with torch.cuda.device(self.device):
