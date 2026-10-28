@@ -97,6 +97,41 @@ def main():
         with (nullcontext(None) if args.skip_trace else LaunchTrace(args.library)) as trace:
             actual=native.forward(images,state,noise,tokens);torch.cuda.synchronize()
         if trace is not None:assert trace.count==1,trace.count
+        diagnostics={}
+        if args.diagnose_attention:
+            with torch.no_grad():
+                from torch.nn.attention import sdpa_kernel,SDPBackend
+                def vision_attention(tensors):
+                    q,k,v=[value.reshape(args.views,256,16,72).transpose(1,2) for value in tensors]
+                    with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+                        return torch.nn.functional.scaled_dot_product_attention(q,k,v).transpose(1,2).reshape(-1,1152)
+                native_vision=vision_attention([native.landmarks['visiondebug.'+part] for part in ('q','k','v')])
+                gold_vision=vision_attention([torch.cat(captures['visiondebug.'+part],dim=0) for part in ('q','k','v')])
+                native_target=native.landmarks['visiondebug.attention'][:args.views*256]
+                gold_target=torch.cat(captures['visiondebug.attention'],dim=0).reshape(-1,1152)
+                diagnostics['vision_native_vs_sdpa_on_native_qkv']=nrmse(native_target,native_vision)
+                diagnostics['vision_gold_vs_sdpa_on_gold_qkv']=nrmse(gold_target,gold_vision)
+                prefix_rows=args.views*256+args.prompt
+                rotary=pg.paligemma.language_model.rotary_emb
+                positions=torch.arange(prefix_rows,device=images.device)[None]
+                cos,sin=rotary(torch.empty((1,prefix_rows,256),device=images.device,dtype=torch.bfloat16),positions)
+                def prefix_attention(tensors):
+                    q,k,v=[value.reshape(1,prefix_rows,heads,256).transpose(1,2)
+                           for value,heads in zip(tensors,(8,1,1))]
+                    def rotate(x):return torch.cat((-x[...,128:],x[...,:128]),dim=-1)
+                    q=q*cos.unsqueeze(1)+rotate(q)*sin.unsqueeze(1)
+                    k=k*cos.unsqueeze(1)+rotate(k)*sin.unsqueeze(1)
+                    k=k.repeat_interleave(8,dim=1);v=v.repeat_interleave(8,dim=1)
+                    score=(q@k.transpose(-1,-2))*.0625
+                    prob=torch.softmax(score,dim=-1,dtype=torch.float32).to(q.dtype)
+                    return (prob@v).transpose(1,2).reshape(-1,2048)
+                native_prefix=prefix_attention([native.landmarks['debug.'+part] for part in ('q','k','v')])
+                gold_prefix=prefix_attention([captures['debug.'+part][0] for part in ('q','k','v')])
+                native_target=native.landmarks['debug.attention'][:prefix_rows]
+                gold_target=captures['debug.attention'][0].reshape(-1,2048)
+                diagnostics['prefix_native_vs_eager_on_native_qkv']=nrmse(native_target,native_prefix)
+                diagnostics['prefix_gold_vs_eager_on_gold_qkv']=nrmse(gold_target,gold_prefix)
+                print('Attention input-matched diagnostics',diagnostics,flush=True)
         errors={}
         for name,value in native.landmarks.items():
             if name.startswith('actions.'):continue
@@ -118,6 +153,7 @@ def main():
             'normalized_max_abs':normalized_max,'cosine':cosine,'numerical_limits':limits,'numerical_gate_passed':passed,
             'source_sha256':hashes,'library_sha256':library_hash,'native_program':native.plan,'native_stages':len(native.stages),'native_tasks':native.plan['compute_tiles'],'precision':native.precision_policy,
             'same_weights':True,'scope':'Complete π0 including vision, prefix, state/action/time heads and all Euler steps; random initialized actual OpenPI weights'}
+        if diagnostics:report['attention_input_matched_diagnostics']=diagnostics
         if args.benchmark:
             imgs=[images[i].permute(2,0,1)[None] for i in range(args.views)]
             masks=[torch.ones(1,device='cuda',dtype=torch.bool) for _ in range(args.views)]

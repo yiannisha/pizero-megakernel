@@ -177,3 +177,29 @@ still exit on the separate full-action numerical gate.
 The reports were regenerated from an isolated checkout of commit `f9fd3f1`
 with no uncommitted native source changes; the full action error and timing
 were unchanged by that clean rebuild.
+
+### Model-derived rotary tables and numerical gate
+
+The original setup regenerated Gemma rotary inverse frequencies in FP32.
+The pinned OpenPI BF16 model stores those frequencies in BF16 and converts
+them back to FP32 to form the angles. At 768 prefix rows, the regenerated
+cosine and sine tables differed from OpenPI's by 0.1137 and 0.1460 NRMSE.
+An input-matched attention diagnostic showed that the native Gemma attention
+operator itself differed from a matching eager calculation by only about
+5.7e-5 NRMSE; the rotary tables caused the material discrepancy.
+
+Setup now asks the actual prefix and expert rotary modules for their tables,
+then passes the resulting BF16 constants to the native VM RoPE instructions.
+There are no Torch model operations in `NativePi0.forward`. The complete
+three-view, 50-action, ten-step same-weight random-model report in
+`results/native_pi0_model_rope_benchmark.json` passes the stated numerical
+limits: action NRMSE 0.00889, normalized maximum error 0.02995, cosine
+0.99996, changed-noise NRMSE 0.00871, bit-exact same-input replay, and one
+native launch. Its isolated median was 216.15 ms versus 249.94 ms for OpenPI
+eager on B200. These are random-initialized weights, not a robot checkpoint.
+
+The one-view, eight-action, one-step checks in
+`results/native_pi0_model_rope_memcheck.json` and
+`results/native_pi0_model_rope_synccheck.json` also pass the numerical gate;
+Compute Sanitizer reported zero memory and synchronization errors. The
+sanitizer scope is smaller than the complete benchmark configuration.

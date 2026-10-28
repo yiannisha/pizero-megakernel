@@ -123,11 +123,12 @@ class NativePi0:
         return self.scalar(5,(rows,weight.shape[0]),a=x,b=self.weight_buffers[key],c=module.bias,dtype=torch.float32,
             k=weight.shape[1],lda=weight.shape[1] if x is None else x.shape[-1],p0=int(bf16),slot=slot)
 
-    def rope(self,rows,offset,dim):
-        pos=torch.arange(offset,offset+rows,device=self.device,dtype=torch.float32)
-        inverse=1./(10000.**(torch.arange(0,dim,2,device=self.device,dtype=torch.float32)/dim))
-        angles=pos[:,None]*inverse[None,:];angles=torch.cat((angles,angles),-1)[None]
-        out=(angles.cos().to(torch.bfloat16),angles.sin().to(torch.bfloat16));self.buffers.extend(out);return out
+    def rope(self,rows,offset,dim,rotary):
+        positions=torch.arange(offset,offset+rows,device=self.device)[None]
+        # The pinned BF16 Gemma stores inverse frequencies in BF16. Rebuilding
+        # them in FP32 changes the rotary angles markedly at prefix positions.
+        out=rotary(torch.empty((1,rows,dim),device=self.device,dtype=torch.bfloat16),positions)
+        self.buffers.extend(out);return out
 
     def block(self,x,layer,*,rows,batches,heads,hk,hd,rms,cache=None,prefix=0,rope=None,name,cache_only=False):
         debug=name in ('prefix.0','vision.0');tag='debug.' if rms else 'visiondebug.';logical=batches*rows
@@ -195,13 +196,13 @@ class NativePi0:
         prefix_rows=self.num_views*256+self.prompt_len
         x=self.scalar(10,(padded(prefix_rows,128),2048),a=x,b=pg.paligemma.language_model.embed_tokens.weight,
             p0=self.num_views*256,p1=self.prompt_len,alpha=math.sqrt(2048.))
-        prefix_rope=self.rope(prefix_rows,0,256);self.caches=[]
+        prefix_rope=self.rope(prefix_rows,0,256,pg.paligemma.language_model.rotary_emb);self.caches=[]
         for i,layer in enumerate(pg.paligemma.language_model.layers):
             cache=tuple(self.tensor((1,prefix_rows+self.chunk_size+1,1,256)) for _ in range(2));self.caches.append(cache)
             x=self.block(x,layer,rows=prefix_rows,batches=1,heads=8,hk=1,hd=256,rms=True,cache=cache,rope=prefix_rope,name=f'prefix.{i}',cache_only=i==17)
             if (i+1)%6==0:print('Native reference: prefix layers',i+1,flush=True)
         state=self.linear32(None,self.model.state_proj,1,slot=2)
-        actions=None;suffix_rows=self.chunk_size+1;suffix_rope=self.rope(suffix_rows,prefix_rows,256)
+        actions=None;suffix_rows=self.chunk_size+1;suffix_rope=self.rope(suffix_rows,prefix_rows,256,pg.gemma_expert.model.rotary_emb)
         # Immutable action half of the first time MLP: W_a(W_in noise + b_in)
         # becomes (W_a W_in) noise + W_a b_in. The time half is a per-step bias.
         first=self.model.action_time_mlp_in;action_in=self.model.action_in_proj
