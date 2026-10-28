@@ -1,0 +1,7 @@
+========= COMPUTE-SANITIZER
+make: Entering directory '/workspace/pizero-megakernel/cosmos3_edge'
+make: 'build/native_test.so' is up to date.
+make: Leaving directory '/workspace/pizero-megakernel/cosmos3_edge'
+{"m": 3, "hidden": 128, "intermediate": 256, "workers": 4, "epochs": 3, "permuted_dag": true, "producer_bytes": "exact", "producer_scales": "exact", "down_vs_split": "exact", "final_nrmse": 0.0, "final_nrmse_limit": 0.005, "nodes": 3, "queue_plan": {"dependency_groups": 1, "dependency_updates": 2, "nodes": 3, "logical_edges": 2}}
+{"m": 129, "hidden": 256, "intermediate": 384, "workers": 16, "epochs": 3, "permuted_dag": true, "producer_bytes": "exact", "producer_scales": "exact", "down_vs_split": "exact", "final_nrmse": 0.0, "final_nrmse_limit": 0.005, "nodes": 10, "queue_plan": {"dependency_groups": 2, "dependency_updates": 6, "nodes": 10, "logical_edges": 12}}
+========= ERROR SUMMARY: 0 errors

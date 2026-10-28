@@ -1,0 +1,475 @@
+{
+  "timestamp_utc": "2026-10-28T02:07:47.974839+00:00",
+  "scope": "Synthetic BF16/FP8 projection operator parity; not model fidelity or calibrated FP8 policy",
+  "boundary": "Preconverted GPU operands to BF16 output; setup and quantization excluded",
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "torch": "2.8.0+cu128",
+    "cuda": "12.8"
+  },
+  "source_sha256": {
+    "cosmos3_edge/gemm.cuh": "2b421db5638cd32ff115126f714c1e3ed053a1e1352613be849e54af357a19c6",
+    "cosmos3_edge/gemm.py": "f887967613fdf27e57adecf7c48c2ae7c709f10f9a0a13607f0aa8384b02975a",
+    "cosmos3_edge/native.cu": "6bcaa520ba551f703b4577272a73b8b688a7b5f121cdcd0acb98b2d1a92e5e45",
+    "cosmos3_edge/tests/validate_projection.py": "81fb8dfd66da0708ac4370b7e70503c52a01f4b0ea2fadeae4b6c05c2faa6533",
+    "native_pi0/tcgen_probe.cu": "006387f2ae44c79ceb61adfaf8fa624a0d58c47a8eb091e5301200131005a14a"
+  },
+  "results": [
+    {
+      "precision": "bf16",
+      "projection": "q",
+      "m": 60,
+      "n": 2048,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.00012469340004721402,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.03832320123910904,
+        "p50": 0.03961599990725517,
+        "p90": 0.04272960089147091
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "k",
+      "m": 60,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 9.111277684712548e-05,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.03580160066485405,
+        "p50": 0.037248000502586365,
+        "p90": 0.03839680142700672
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "v",
+      "m": 60,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 9.654225701854495e-05,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.034031998738646506,
+        "p50": 0.035360001027584076,
+        "p90": 0.03665599972009659
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "o",
+      "m": 60,
+      "n": 2048,
+      "k": 2048,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 8.092929157678021e-05,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.041439998894929886,
+        "p50": 0.042608000338077545,
+        "p90": 0.04441919922828674
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "up",
+      "m": 60,
+      "n": 9216,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": true,
+      "relative_l2_vs_dequantized_reference": 0.00015548037602546394,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.0344512015581131,
+        "p50": 0.03521599993109703,
+        "p90": 0.03662079945206642
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "down",
+      "m": 60,
+      "n": 2048,
+      "k": 9216,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.00021358137795294532,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.08492479845881462,
+        "p50": 0.08574399724602699,
+        "p90": 0.08714880049228668
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "q",
+      "m": 6300,
+      "n": 2048,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.00010070517837310203,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.11296000331640244,
+        "p50": 0.11393600329756737,
+        "p90": 0.115590400993824
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "k",
+      "m": 6300,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 9.914131108590249e-05,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.06606719717383384,
+        "p50": 0.06646399945020676,
+        "p90": 0.06729279756546021
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "v",
+      "m": 6300,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.00010496828151917088,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.06584960222244263,
+        "p50": 0.06638399884104729,
+        "p90": 0.06738879904150963
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "o",
+      "m": 6300,
+      "n": 2048,
+      "k": 2048,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.00010195776413304708,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.19489920139312744,
+        "p50": 0.19577600061893463,
+        "p90": 0.19805120229721068
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "up",
+      "m": 6300,
+      "n": 9216,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": true,
+      "relative_l2_vs_dequantized_reference": 0.00014537635545322332,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.43307200372219085,
+        "p50": 0.4355520009994507,
+        "p90": 0.44034239947795867
+      }
+    },
+    {
+      "precision": "bf16",
+      "projection": "down",
+      "m": 6300,
+      "n": 2048,
+      "k": 9216,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.00022863447707491784,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_bfloat16>, Matmul<__nv_bfloat16> >(Globals<__nv_bfloat16>)",
+      "gpu_ms": {
+        "p10": 0.5867776095867157,
+        "p50": 0.5889119803905487,
+        "p90": 0.6021632015705108
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "q",
+      "m": 60,
+      "n": 2048,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.03131520003080368,
+        "p50": 0.0323840007185936,
+        "p90": 0.033798400312662125
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "k",
+      "m": 60,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.032416000962257385,
+        "p50": 0.03879999928176403,
+        "p90": 0.040963198989629745
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "v",
+      "m": 60,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.06106239967048168,
+        "p50": 0.062272001057863235,
+        "p90": 0.0657823994755745
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "o",
+      "m": 60,
+      "n": 2048,
+      "k": 2048,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.04674239866435528,
+        "p50": 0.047568000853061676,
+        "p90": 0.04900159984827042
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "up",
+      "m": 60,
+      "n": 9216,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": true,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.03357759900391102,
+        "p50": 0.03444800153374672,
+        "p90": 0.034995201602578165
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "down",
+      "m": 60,
+      "n": 2048,
+      "k": 9216,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.07646400108933449,
+        "p50": 0.07761600241065025,
+        "p90": 0.07897279784083366
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "q",
+      "m": 6300,
+      "n": 2048,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.10071999952197075,
+        "p50": 0.10159999877214432,
+        "p90": 0.10267519950866699
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "k",
+      "m": 6300,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.05959679968655109,
+        "p50": 0.06030400097370148,
+        "p90": 0.06110399924218655
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "v",
+      "m": 6300,
+      "n": 1024,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.059804800897836685,
+        "p50": 0.060784000903367996,
+        "p90": 0.0617344006896019
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "o",
+      "m": 6300,
+      "n": 2048,
+      "k": 2048,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 0.0,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.1542656049132347,
+        "p50": 0.15593599528074265,
+        "p90": 0.1590751975774765
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "up",
+      "m": 6300,
+      "n": 9216,
+      "k": 2048,
+      "bias": false,
+      "residual": false,
+      "relu2": true,
+      "relative_l2_vs_dequantized_reference": 7.826449433685359e-06,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.3636704057455063,
+        "p50": 0.36526399850845337,
+        "p90": 0.3731423944234848
+      }
+    },
+    {
+      "precision": "fp8",
+      "projection": "down",
+      "m": 6300,
+      "n": 2048,
+      "k": 9216,
+      "bias": true,
+      "residual": true,
+      "relu2": false,
+      "relative_l2_vs_dequantized_reference": 1.822527752955592e-05,
+      "limit": 0.001,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, Globals<__nv_fp8_e4m3>, Matmul<__nv_fp8_e4m3> >(Globals<__nv_fp8_e4m3>)",
+      "gpu_ms": {
+        "p10": 0.5215296089649201,
+        "p50": 0.5232640206813812,
+        "p90": 0.5259039998054504
+      }
+    }
+  ]
+}

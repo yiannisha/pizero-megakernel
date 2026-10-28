@@ -1,0 +1,10 @@
+{
+  "checkpoint": {
+    "repo": "nvidia/Cosmos3-Edge",
+    "revision": "344d602b128d1bbdacb43b08d0a3626f46343e29"
+  },
+  "tensors": 549,
+  "shards": 2,
+  "total_bytes": 6739314048,
+  "scope": "remote safetensor headers only; weight contents not downloaded or hash-verified"
+}

@@ -1,0 +1,129 @@
+{
+  "timestamp_utc": "2026-10-28T02:33:38.375216+00:00",
+  "gpu": "NVIDIA B200",
+  "scope": "Standalone native QK preparation on synthetic activations; not attention/layer/model fidelity",
+  "source_sha256": {
+    "cosmos3_edge/rope.cuh": "5f5e12f54a3ac821020d5b68014314c8898bf1ca2d6186d0f4ac1d7a4a788660",
+    "cosmos3_edge/rope.py": "23fb2275cc88237d62b66f8d10b3b4746df064fe2711a361fa434d6e5e842d95",
+    "cosmos3_edge/tests/validate_rope.py": "a6a7e6849d74959e2b35399982365da1de85028d89c61ca321913e725fa2b7d2",
+    "cosmos3_edge/tests/rope_reference.cu": "99b51b5db3a362386fdc93c63969ee294ba6fb115efecbc1508a0d38e7ce0bd3",
+    "third_party/cosmos-framework/cosmos_framework/model/generator/reasoner/nemotron_3_dense_vl/nemotron_3_dense_vl.py": "4ab43a1c0e638484851a4009fcee6241085cffa6ba02e31ef7ee2d4fe1b8f0ba",
+    "third_party/FlashRT/csrc/kernels/cosmos3_edge_misc.cu": "54f18ee4a93bf08b4fb86b264713587ce35fd46a4c962e2c64384790ffcc6b99"
+  },
+  "results": [
+    {
+      "rows": 3,
+      "rounding": "fused",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "vectors_per_task": 768,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.003035391336479174,
+      "flashrt_fused": "exact",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.028921600431203842,
+        "p50": 0.029839999973773956,
+        "p90": 0.030991999432444572
+      }
+    },
+    {
+      "rows": 3,
+      "rounding": "reference",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "vectors_per_task": 768,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.0,
+      "flashrt_fused": "not applicable",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.029724799282848834,
+        "p50": 0.030719999223947525,
+        "p90": 0.03216959871351719
+      }
+    },
+    {
+      "rows": 60,
+      "rounding": "fused",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "vectors_per_task": 768,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.0030200996916567896,
+      "flashrt_fused": "exact",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.13671040534973145,
+        "p50": 0.13724800199270248,
+        "p90": 0.13840960264205932
+      }
+    },
+    {
+      "rows": 60,
+      "rounding": "reference",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "vectors_per_task": 768,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 1.9189821251849232e-05,
+      "flashrt_fused": "not applicable",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.14854079931974412,
+        "p50": 0.14923200011253357,
+        "p90": 0.15186560153961182
+      }
+    },
+    {
+      "rows": 6300,
+      "rounding": "fused",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "vectors_per_task": 768,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.003016133176059272,
+      "flashrt_fused": "exact",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.45568639039993286,
+        "p50": 0.4580480009317398,
+        "p90": 0.46026239395141605
+      }
+    },
+    {
+      "rows": 6300,
+      "rounding": "reference",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "vectors_per_task": 768,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 1.1341330288454912e-05,
+      "flashrt_fused": "not applicable",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.49405120611190795,
+        "p50": 0.49716798961162567,
+        "p90": 0.5021887838840484
+      }
+    }
+  ]
+}

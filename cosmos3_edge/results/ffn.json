@@ -1,0 +1,151 @@
+{
+  "timestamp_utc": "2026-10-28T02:02:31.576630+00:00",
+  "scope": "Synthetic one-launch ReLU2 FFN, not full model or pretrained fidelity",
+  "boundary": "GPU packed input and weights to BF16 output; includes residual; excludes setup and input packing",
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "torch": "2.8.0+cu128",
+    "cuda": "12.8"
+  },
+  "source_sha256": {
+    "cosmos3_edge/native.cu": "d88a5da64b0aeddc1d1c9bd6c406b3fefbf777e6bc1db745963a04c623cf85df",
+    "cosmos3_edge/ffn.py": "4fb4944bb08137f3a63fbfc1c200eec2af649ec144ea53b7ea045592f9ef1e70",
+    "cosmos3_edge/Makefile": "69f5f0f377890bece2cf7aca227098efbae6e48940ef51966618c60f13b54f29",
+    "cosmos3_edge/tests/validate_ffn.py": "0e7316c69adb44bb9e68397fe9fdcabcd0c1899730adb263e9227bff59c27566",
+    "native_pi0/nvfp4_probe.cu": "303296827759e8c803b64833e708f9644bdb12a18fb60a85aa3515e5becdd7ac",
+    "native_pi0/tcgen_probe.cu": "6193a7aa0e5e2a23571498ad7ad1da1f4625a5bf59102209320b52f481d9bac2",
+    "native_pi0/dag_matmul.cu": "f5bc02e101705f8b64b4d54bd44686a95505415bad345feb0ee6272ab51907c7",
+    "native_pi0/dag_scheduler.cuh": "f3ed6f1ea144c32e12450ab8a5ba72cfa8452ae54dc2bdfb50459f81632dcbdc",
+    "native_pi0/fp4_output_reference.cu": "a26334c038d3188b5805fc210c62163c0aab3be1366224e2c6dd346d00acb72e"
+  },
+  "results": [
+    {
+      "m": 3,
+      "hidden": 128,
+      "intermediate": 256,
+      "workers": 4,
+      "epochs": 3,
+      "permuted_dag": true,
+      "producer_bytes": "exact",
+      "producer_scales": "exact",
+      "down_vs_split": "exact",
+      "final_nrmse": 0.0,
+      "final_nrmse_limit": 0.005,
+      "nodes": 3,
+      "queue_plan": {
+        "dependency_groups": 1,
+        "dependency_updates": 2,
+        "nodes": 3,
+        "logical_edges": 2
+      },
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI13ComputeConfig16DagMatmulGlobalsJ11DagMatmulOp9DagNormOpEEEvT0_",
+      "gpu": {
+        "p10_ms": 0.0773984007537365,
+        "p50_ms": 0.07843200117349625,
+        "p90_ms": 0.08305279761552811
+      },
+      "synchronized_wall": {
+        "p10_ms": 0.1196386,
+        "p50_ms": 0.12183150000000001,
+        "p90_ms": 0.1289362
+      }
+    },
+    {
+      "m": 129,
+      "hidden": 256,
+      "intermediate": 384,
+      "workers": 16,
+      "epochs": 3,
+      "permuted_dag": true,
+      "producer_bytes": "exact",
+      "producer_scales": "exact",
+      "down_vs_split": "exact",
+      "final_nrmse": 0.0,
+      "final_nrmse_limit": 0.005,
+      "nodes": 10,
+      "queue_plan": {
+        "dependency_groups": 2,
+        "dependency_updates": 6,
+        "nodes": 10,
+        "logical_edges": 12
+      },
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI13ComputeConfig16DagMatmulGlobalsJ11DagMatmulOp9DagNormOpEEEvT0_",
+      "gpu": {
+        "p10_ms": 0.09382080063223838,
+        "p50_ms": 0.09736000001430511,
+        "p90_ms": 0.104425597935915
+      },
+      "synchronized_wall": {
+        "p10_ms": 0.13857350000000002,
+        "p50_ms": 0.142769,
+        "p90_ms": 0.1496422
+      }
+    },
+    {
+      "m": 60,
+      "hidden": 2048,
+      "intermediate": 9216,
+      "workers": 64,
+      "epochs": 3,
+      "permuted_dag": true,
+      "producer_bytes": "exact",
+      "producer_scales": "exact",
+      "down_vs_split": "exact",
+      "final_nrmse": 0.0,
+      "final_nrmse_limit": 0.005,
+      "nodes": 88,
+      "queue_plan": {
+        "dependency_groups": 1,
+        "dependency_updates": 72,
+        "nodes": 88,
+        "logical_edges": 1152
+      },
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI13ComputeConfig16DagMatmulGlobalsJ11DagMatmulOp9DagNormOpEEEvT0_",
+      "gpu": {
+        "p10_ms": 0.23247680366039275,
+        "p50_ms": 0.2359359934926033,
+        "p90_ms": 0.24011200219392775
+      },
+      "synchronized_wall": {
+        "p10_ms": 0.255586,
+        "p50_ms": 0.2582235,
+        "p90_ms": 0.2638356
+      }
+    },
+    {
+      "m": 6300,
+      "hidden": 2048,
+      "intermediate": 9216,
+      "workers": 148,
+      "epochs": 3,
+      "permuted_dag": true,
+      "producer_bytes": "exact",
+      "producer_scales": "exact",
+      "down_vs_split": "exact",
+      "final_nrmse": 2.16451062925469e-06,
+      "final_nrmse_limit": 0.005,
+      "nodes": 4400,
+      "queue_plan": {
+        "dependency_groups": 50,
+        "dependency_updates": 3600,
+        "nodes": 4400,
+        "logical_edges": 57600
+      },
+      "cuda_launch_count": 1,
+      "kernel_symbol": "_ZN10megakernel2mkI13ComputeConfig16DagMatmulGlobalsJ11DagMatmulOp9DagNormOpEEEvT0_",
+      "gpu": {
+        "p10_ms": 2.805423951148987,
+        "p50_ms": 2.8201119899749756,
+        "p90_ms": 2.8413280725479124
+      },
+      "synchronized_wall": {
+        "p10_ms": 2.8414251,
+        "p50_ms": 2.855252,
+        "p90_ms": 2.8796852
+      }
+    }
+  ]
+}

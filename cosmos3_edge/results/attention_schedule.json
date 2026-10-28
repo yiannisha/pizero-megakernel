@@ -1,0 +1,337 @@
+{
+  "timestamp_utc": "2026-10-28T02:52:16.107218+00:00",
+  "gpu": "NVIDIA B200",
+  "scope": "One-launch QKV/preparation/joint attention on synthetic inputs and weights; not a complete layer or model",
+  "source_sha256": {
+    "cosmos3_edge/attention_schedule.cuh": "75d91908748dffa25b0e2945ff31909c2733aa39ac2a952e7815cf9a1b2cdb72",
+    "cosmos3_edge/attention_schedule.py": "bccc6a1233c36967a2718e63966ba7139de59746a58b94c1ba0a85592a488d55",
+    "cosmos3_edge/rope.cuh": "5f5e12f54a3ac821020d5b68014314c8898bf1ca2d6186d0f4ac1d7a4a788660",
+    "cosmos3_edge/gemm.cuh": "2b421db5638cd32ff115126f714c1e3ed053a1e1352613be849e54af357a19c6",
+    "cosmos3_edge/dense_dag.cuh": "8723a319e59c509190a62d8cc63e0d455f1f1e799478aba2fad415b71cebd65a",
+    "native_pi0/attention.cu": "247f52cda9df8b45a489cf3e751112d2f9071382c8d0cb573c6c91fbce7aba7c",
+    "native_pi0/tcgen_probe.cu": "33038729b6a0ca3d7e4b77e7ec381ee5b74750bd33346af6346e8587c0ed7b30",
+    "cosmos3_edge/tests/validate_attention_schedule.py": "ccb4fedb2b366540d494b28a420a1fb6e7560ce0d40c175d704a003046e5512d"
+  },
+  "results": [
+    {
+      "rows": 17,
+      "queries": 17,
+      "hidden": 128,
+      "understanding_rows": 5,
+      "projection_precision": "bf16",
+      "splits": 1,
+      "nodes": 52,
+      "queue_plan": {
+        "dependency_groups": 5,
+        "dependency_updates": 69,
+        "nodes": 52,
+        "logical_edges": 114
+      },
+      "checks": [
+        {
+          "relative_l2": 0.004142733216932946,
+          "cosine": 0.9999914478565529
+        },
+        {
+          "relative_l2": 0.0042660021067663255,
+          "cosine": 0.9999909113584344
+        },
+        {
+          "relative_l2": 0.0041846008397282385,
+          "cosine": 0.9999912625955311
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.18161920458078384,
+        "p50": 0.18903999775648117,
+        "p90": 0.2191232055425644
+      }
+    },
+    {
+      "rows": 17,
+      "queries": 17,
+      "hidden": 128,
+      "understanding_rows": 5,
+      "projection_precision": "fp8",
+      "splits": 1,
+      "nodes": 52,
+      "queue_plan": {
+        "dependency_groups": 5,
+        "dependency_updates": 69,
+        "nodes": 52,
+        "logical_edges": 114
+      },
+      "checks": [
+        {
+          "relative_l2": 0.0042464013615028705,
+          "cosine": 0.99999100389378
+        },
+        {
+          "relative_l2": 0.004315470082882534,
+          "cosine": 0.9999907812028169
+        },
+        {
+          "relative_l2": 0.0043379275073779575,
+          "cosine": 0.9999906744778517
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.17678399831056596,
+        "p50": 0.18425599485635757,
+        "p90": 0.21098880469799042
+      }
+    },
+    {
+      "rows": 60,
+      "queries": 60,
+      "hidden": 2048,
+      "understanding_rows": 128,
+      "projection_precision": "bf16",
+      "splits": 8,
+      "nodes": 169,
+      "queue_plan": {
+        "dependency_groups": 4,
+        "dependency_updates": 41,
+        "nodes": 169,
+        "logical_edges": 899
+      },
+      "checks": [
+        {
+          "relative_l2": 0.004855055367702791,
+          "cosine": 0.9999882922881745
+        },
+        {
+          "relative_l2": 0.004892335622250577,
+          "cosine": 0.9999881487803872
+        },
+        {
+          "relative_l2": 0.004822933910657818,
+          "cosine": 0.9999884476757752
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.3598847955465317,
+        "p50": 0.3859360069036484,
+        "p90": 0.3960672110319138
+      }
+    },
+    {
+      "rows": 60,
+      "queries": 60,
+      "hidden": 2048,
+      "understanding_rows": 128,
+      "projection_precision": "fp8",
+      "splits": 8,
+      "nodes": 169,
+      "queue_plan": {
+        "dependency_groups": 4,
+        "dependency_updates": 41,
+        "nodes": 169,
+        "logical_edges": 899
+      },
+      "checks": [
+        {
+          "relative_l2": 0.004742089626814107,
+          "cosine": 0.9999888820115931
+        },
+        {
+          "relative_l2": 0.004754000348613883,
+          "cosine": 0.9999887909496986
+        },
+        {
+          "relative_l2": 0.0048177208522045606,
+          "cosine": 0.9999884544241551
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.3537344098091125,
+        "p50": 0.3741599917411804,
+        "p90": 0.39148479998111724
+      }
+    },
+    {
+      "rows": 6300,
+      "queries": 60,
+      "hidden": 2048,
+      "understanding_rows": 128,
+      "projection_precision": "bf16",
+      "splits": 8,
+      "nodes": 2517,
+      "queue_plan": {
+        "dependency_groups": 168,
+        "dependency_updates": 3981,
+        "nodes": 2517,
+        "logical_edges": 14695
+      },
+      "checks": [
+        {
+          "relative_l2": 0.005171472101192938,
+          "cosine": 0.9999868066841302
+        },
+        {
+          "relative_l2": 0.005140366458112239,
+          "cosine": 0.9999869727424511
+        },
+        {
+          "relative_l2": 0.00514760409016642,
+          "cosine": 0.9999869248069524
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 2.0189152479171755,
+        "p50": 2.040671944618225,
+        "p90": 2.0689472198486327
+      }
+    },
+    {
+      "rows": 6300,
+      "queries": 60,
+      "hidden": 2048,
+      "understanding_rows": 128,
+      "projection_precision": "fp8",
+      "splits": 8,
+      "nodes": 2517,
+      "queue_plan": {
+        "dependency_groups": 168,
+        "dependency_updates": 3981,
+        "nodes": 2517,
+        "logical_edges": 14695
+      },
+      "checks": [
+        {
+          "relative_l2": 0.0050325340399800704,
+          "cosine": 0.9999874664811413
+        },
+        {
+          "relative_l2": 0.00502001306529355,
+          "cosine": 0.9999875260741241
+        },
+        {
+          "relative_l2": 0.005113797220076261,
+          "cosine": 0.9999870857622101
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 1.9955647706985473,
+        "p50": 2.01583993434906,
+        "p90": 2.032726502418518
+      }
+    },
+    {
+      "rows": 6300,
+      "queries": 6300,
+      "hidden": 2048,
+      "understanding_rows": 128,
+      "projection_precision": "bf16",
+      "splits": 1,
+      "nodes": 3973,
+      "queue_plan": {
+        "dependency_groups": 266,
+        "dependency_updates": 4665,
+        "nodes": 3973,
+        "logical_edges": 24967
+      },
+      "checks": [
+        {
+          "relative_l2": 0.005148045809574475,
+          "cosine": 0.9999868955803911
+        },
+        {
+          "relative_l2": 0.005131401323830253,
+          "cosine": 0.9999869734487885
+        },
+        {
+          "relative_l2": 0.005145506162061973,
+          "cosine": 0.9999869055499672
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 12.581209468841553,
+        "p50": 12.60096025466919,
+        "p90": 12.625318622589111
+      }
+    },
+    {
+      "rows": 6300,
+      "queries": 6300,
+      "hidden": 2048,
+      "understanding_rows": 128,
+      "projection_precision": "fp8",
+      "splits": 1,
+      "nodes": 3973,
+      "queue_plan": {
+        "dependency_groups": 266,
+        "dependency_updates": 4665,
+        "nodes": 3973,
+        "logical_edges": 24967
+      },
+      "checks": [
+        {
+          "relative_l2": 0.005136361382239798,
+          "cosine": 0.9999869643880172
+        },
+        {
+          "relative_l2": 0.00513687276728525,
+          "cosine": 0.999986956871538
+        },
+        {
+          "relative_l2": 0.005155132698047118,
+          "cosine": 0.9999868628305332
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 12.546466827392578,
+        "p50": 12.568256378173828,
+        "p90": 12.59240951538086
+      }
+    }
+  ]
+}

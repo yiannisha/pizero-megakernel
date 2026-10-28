@@ -1,0 +1,10 @@
+{
+  "transformer/diffusion_pytorch_model-00001-of-00002.safetensors": {
+    "size": 5000040072,
+    "sha256": "116134e5492c514df79a2f07214e577c397aa961387dbe1c5dda488e7994ff6b"
+  },
+  "transformer/diffusion_pytorch_model-00002-of-00002.safetensors": {
+    "size": 1739335512,
+    "sha256": "3b4c0aafe2705c900ac7bc743085a8e9e09c906624331bc2baa21e172e5d48e4"
+  }
+}

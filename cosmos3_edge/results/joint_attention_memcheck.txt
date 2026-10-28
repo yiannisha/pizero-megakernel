@@ -1,0 +1,6 @@
+========= COMPUTE-SANITIZER
+make: Entering directory '/workspace/pizero-megakernel/cosmos3_edge'
+make: Leaving directory '/workspace/pizero-megakernel/cosmos3_edge'
+{"generated_rows": 17, "query_rows": 17, "understanding_rows": 5, "splits": 1, "checks": [{"relative_l2": 0.0030145621655557867, "cosine": 0.9999954785359121}, {"relative_l2": 0.0029637788422824576, "cosine": 0.9999956338716822}, {"relative_l2": 0.002962024355826108, "cosine": 0.9999956238033169}], "static_prefix": "bit-exact across three generation updates", "scope": "attention only; QK prep is a separate native launch in this test"}
+{"generated_rows": 17, "query_rows": 17, "understanding_rows": 5, "splits": 8, "checks": [{"relative_l2": 0.002952197578029236, "cosine": 0.9999956587933662}, {"relative_l2": 0.002938490856515388, "cosine": 0.9999956930020667}, {"relative_l2": 0.002986443910382215, "cosine": 0.9999955682071082}], "static_prefix": "bit-exact across three generation updates", "scope": "attention only; QK prep is a separate native launch in this test"}
+========= ERROR SUMMARY: 0 errors

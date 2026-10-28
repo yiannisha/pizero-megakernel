@@ -1,0 +1,183 @@
+{
+  "timestamp_utc": "2026-10-28T02:27:57.557297+00:00",
+  "gpu": "NVIDIA B200",
+  "scope": "Native long-sequence attention and standalone QK prep on synthetic activations; not a complete layer or model",
+  "source_sha256": {
+    "cosmos3_edge/attention.py": "f3b3dcfe52fe2bb42eb89643e8c477e6ceb482a07a991f76f1924e5b307c4751",
+    "cosmos3_edge/rope.cuh": "c4375e2abf6d2522d0dcc269e87a279a98924886c09f517493268da126bf32b5",
+    "cosmos3_edge/rope.py": "23fb2275cc88237d62b66f8d10b3b4746df064fe2711a361fa434d6e5e842d95",
+    "native_pi0/attention.cu": "247f52cda9df8b45a489cf3e751112d2f9071382c8d0cb573c6c91fbce7aba7c",
+    "native_pi0/attention.py": "61be28fdbf19eaa4160f363086cc4604c8bc7770a92fd954f82eebcfd9c7d265",
+    "cosmos3_edge/tests/validate_joint_attention.py": "149d9ac1a16d6f7c76b5184b531b8547260a4ce909de67b1c4dae8d9ee087069"
+  },
+  "results": [
+    {
+      "generated_rows": 17,
+      "query_rows": 17,
+      "understanding_rows": 5,
+      "splits": 1,
+      "checks": [
+        {
+          "relative_l2": 0.0030145621655557867,
+          "cosine": 0.9999954785359121
+        },
+        {
+          "relative_l2": 0.0029637788422824576,
+          "cosine": 0.9999956338716822
+        },
+        {
+          "relative_l2": 0.002962024355826108,
+          "cosine": 0.9999956238033169
+        }
+      ],
+      "static_prefix": "bit-exact across three generation updates",
+      "scope": "attention only; QK prep is a separate native launch in this test",
+      "attention_cuda_launch_count": 1,
+      "attention_gpu_ms": {
+        "p10": 0.042527999728918076,
+        "p50": 0.043407998979091644,
+        "p90": 0.04467200003564358
+      }
+    },
+    {
+      "generated_rows": 17,
+      "query_rows": 17,
+      "understanding_rows": 5,
+      "splits": 8,
+      "checks": [
+        {
+          "relative_l2": 0.002952197578029236,
+          "cosine": 0.9999956587933662
+        },
+        {
+          "relative_l2": 0.002938490856515388,
+          "cosine": 0.9999956930020667
+        },
+        {
+          "relative_l2": 0.002986443910382215,
+          "cosine": 0.9999955682071082
+        }
+      ],
+      "static_prefix": "bit-exact across three generation updates",
+      "scope": "attention only; QK prep is a separate native launch in this test",
+      "attention_cuda_launch_count": 1,
+      "attention_gpu_ms": {
+        "p10": 0.05825920030474663,
+        "p50": 0.05943999998271465,
+        "p90": 0.06022399999201298
+      }
+    },
+    {
+      "generated_rows": 6300,
+      "query_rows": 60,
+      "understanding_rows": 128,
+      "splits": 1,
+      "checks": [
+        {
+          "relative_l2": 0.0034429936941953792,
+          "cosine": 0.9999941217258893
+        },
+        {
+          "relative_l2": 0.003480859973430432,
+          "cosine": 0.9999939882131752
+        },
+        {
+          "relative_l2": 0.00343736842670267,
+          "cosine": 0.9999941408670707
+        }
+      ],
+      "static_prefix": "bit-exact across three generation updates",
+      "scope": "attention only; QK prep is a separate native launch in this test",
+      "attention_cuda_launch_count": 1,
+      "attention_gpu_ms": {
+        "p10": 1.0015359759330749,
+        "p50": 1.0058879852294922,
+        "p90": 1.0094368219375611
+      }
+    },
+    {
+      "generated_rows": 6300,
+      "query_rows": 60,
+      "understanding_rows": 128,
+      "splits": 8,
+      "checks": [
+        {
+          "relative_l2": 0.003396990597788521,
+          "cosine": 0.9999942906974926
+        },
+        {
+          "relative_l2": 0.003400639868594587,
+          "cosine": 0.9999942682922209
+        },
+        {
+          "relative_l2": 0.0034514768527170153,
+          "cosine": 0.99999409794855
+        }
+      ],
+      "static_prefix": "bit-exact across three generation updates",
+      "scope": "attention only; QK prep is a separate native launch in this test",
+      "attention_cuda_launch_count": 1,
+      "attention_gpu_ms": {
+        "p10": 0.20448000729084015,
+        "p50": 0.20563200116157532,
+        "p90": 0.20681920200586318
+      }
+    },
+    {
+      "generated_rows": 6300,
+      "query_rows": 6300,
+      "understanding_rows": 128,
+      "splits": 1,
+      "checks": [
+        {
+          "relative_l2": 0.00353802181849099,
+          "cosine": 0.9999937930546234
+        },
+        {
+          "relative_l2": 0.0035230518715260403,
+          "cosine": 0.9999938441861143
+        },
+        {
+          "relative_l2": 0.0035602380754123056,
+          "cosine": 0.9999937164164301
+        }
+      ],
+      "static_prefix": "bit-exact across three generation updates",
+      "scope": "attention only; QK prep is a separate native launch in this test",
+      "attention_cuda_launch_count": 1,
+      "attention_gpu_ms": {
+        "p10": 11.008320236206055,
+        "p50": 11.012095928192139,
+        "p90": 11.049170970916748
+      }
+    },
+    {
+      "generated_rows": 6300,
+      "query_rows": 6300,
+      "understanding_rows": 128,
+      "splits": 8,
+      "checks": [
+        {
+          "relative_l2": 0.003462477749783842,
+          "cosine": 0.999994056862056
+        },
+        {
+          "relative_l2": 0.0035060926766321194,
+          "cosine": 0.9999939086418944
+        },
+        {
+          "relative_l2": 0.0034931258924958864,
+          "cosine": 0.9999939524150356
+        }
+      ],
+      "static_prefix": "bit-exact across three generation updates",
+      "scope": "attention only; QK prep is a separate native launch in this test",
+      "attention_cuda_launch_count": 1,
+      "attention_gpu_ms": {
+        "p10": 17.08852882385254,
+        "p50": 17.220175743103027,
+        "p90": 17.298236846923828
+      }
+    }
+  ]
+}

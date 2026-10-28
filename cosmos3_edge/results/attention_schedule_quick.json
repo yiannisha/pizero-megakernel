@@ -1,0 +1,177 @@
+{
+  "timestamp_utc": "2026-10-28T02:50:23.818115+00:00",
+  "gpu": "NVIDIA B200",
+  "scope": "One-launch QKV/preparation/joint attention on synthetic inputs and weights; not a complete layer or model",
+  "source_sha256": {
+    "cosmos3_edge/attention_schedule.cuh": "75d91908748dffa25b0e2945ff31909c2733aa39ac2a952e7815cf9a1b2cdb72",
+    "cosmos3_edge/attention_schedule.py": "bccc6a1233c36967a2718e63966ba7139de59746a58b94c1ba0a85592a488d55",
+    "cosmos3_edge/rope.cuh": "5f5e12f54a3ac821020d5b68014314c8898bf1ca2d6186d0f4ac1d7a4a788660",
+    "cosmos3_edge/gemm.cuh": "2b421db5638cd32ff115126f714c1e3ed053a1e1352613be849e54af357a19c6",
+    "cosmos3_edge/dense_dag.cuh": "8723a319e59c509190a62d8cc63e0d455f1f1e799478aba2fad415b71cebd65a",
+    "native_pi0/attention.cu": "247f52cda9df8b45a489cf3e751112d2f9071382c8d0cb573c6c91fbce7aba7c",
+    "native_pi0/tcgen_probe.cu": "33038729b6a0ca3d7e4b77e7ec381ee5b74750bd33346af6346e8587c0ed7b30",
+    "cosmos3_edge/tests/validate_attention_schedule.py": "ccb4fedb2b366540d494b28a420a1fb6e7560ce0d40c175d704a003046e5512d"
+  },
+  "results": [
+    {
+      "rows": 17,
+      "queries": 17,
+      "hidden": 128,
+      "understanding_rows": 5,
+      "projection_precision": "bf16",
+      "splits": 1,
+      "nodes": 52,
+      "queue_plan": {
+        "dependency_groups": 5,
+        "dependency_updates": 69,
+        "nodes": 52,
+        "logical_edges": 114
+      },
+      "checks": [
+        {
+          "relative_l2": 0.004142733216932946,
+          "cosine": 0.9999914478565529
+        },
+        {
+          "relative_l2": 0.0042660021067663255,
+          "cosine": 0.9999909113584344
+        },
+        {
+          "relative_l2": 0.0041846008397282385,
+          "cosine": 0.9999912625955311
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.17666239887475968,
+        "p50": 0.17988800257444382,
+        "p90": 0.21027199923992157
+      }
+    },
+    {
+      "rows": 17,
+      "queries": 17,
+      "hidden": 128,
+      "understanding_rows": 5,
+      "projection_precision": "fp8",
+      "splits": 1,
+      "nodes": 52,
+      "queue_plan": {
+        "dependency_groups": 5,
+        "dependency_updates": 69,
+        "nodes": 52,
+        "logical_edges": 114
+      },
+      "checks": [
+        {
+          "relative_l2": 0.0042464013615028705,
+          "cosine": 0.99999100389378
+        },
+        {
+          "relative_l2": 0.004315470082882534,
+          "cosine": 0.9999907812028169
+        },
+        {
+          "relative_l2": 0.0043379275073779575,
+          "cosine": 0.9999906744778517
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.1758912056684494,
+        "p50": 0.179967999458313,
+        "p90": 0.20755840539932252
+      }
+    },
+    {
+      "rows": 17,
+      "queries": 9,
+      "hidden": 128,
+      "understanding_rows": 5,
+      "projection_precision": "bf16",
+      "splits": 8,
+      "nodes": 164,
+      "queue_plan": {
+        "dependency_groups": 5,
+        "dependency_updates": 69,
+        "nodes": 164,
+        "logical_edges": 450
+      },
+      "checks": [
+        {
+          "relative_l2": 0.004527413722772239,
+          "cosine": 0.9999897618460757
+        },
+        {
+          "relative_l2": 0.003902690223622045,
+          "cosine": 0.9999923845955148
+        },
+        {
+          "relative_l2": 0.0043414285923404836,
+          "cosine": 0.9999907050759863
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.26230399310588837,
+        "p50": 0.2730239927768707,
+        "p90": 0.30993279814720154
+      }
+    },
+    {
+      "rows": 17,
+      "queries": 9,
+      "hidden": 128,
+      "understanding_rows": 5,
+      "projection_precision": "fp8",
+      "splits": 8,
+      "nodes": 164,
+      "queue_plan": {
+        "dependency_groups": 5,
+        "dependency_updates": 69,
+        "nodes": 164,
+        "logical_edges": 450
+      },
+      "checks": [
+        {
+          "relative_l2": 0.004474615652315214,
+          "cosine": 0.9999900202618291
+        },
+        {
+          "relative_l2": 0.004653382652347806,
+          "cosine": 0.9999893059503103
+        },
+        {
+          "relative_l2": 0.004389460342433511,
+          "cosine": 0.9999903663095641
+        }
+      ],
+      "split_outputs": "bit-exact",
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "epoch_interleaving": "passed",
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, GenerationAttentionGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, ScheduledEdgePreparation, ScheduledEdgeAttention, ScheduledEdgeKVReady>(GenerationAttentionGlobals)",
+      "gpu_ms": {
+        "p10": 0.2614847898483276,
+        "p50": 0.27484799921512604,
+        "p90": 0.3043936133384705
+      }
+    }
+  ]
+}

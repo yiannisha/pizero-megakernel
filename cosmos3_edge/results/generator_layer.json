@@ -1,0 +1,114 @@
+{
+  "timestamp_utc": "2026-10-28T03:09:02.865467+00:00",
+  "gpu": "NVIDIA B200",
+  "scope": "BF16 generation transformer with checkpoint weights, synthetic hidden states and prepared synthetic KV; not full denoising or application fidelity",
+  "source_sha256": {
+    "cosmos3_edge/model.py": "52f05a5139182b06b4b279d247346dd3e28a3ac3a559ea83a2f1e03022ebe884",
+    "cosmos3_edge/engine.cuh": "93414d3bc5dc798b12a1f28c55814a5e821e669e557bc81326ad9c5604be669c",
+    "cosmos3_edge/engine.py": "9974667b733ab04df4525d6eeb66d100d9bc4ac9c2fc32df3be9da5a55f87a35",
+    "cosmos3_edge/gemm.cuh": "aab3b8785d9e2fbebcc114b07b04583c56f579493f50e48a2558adb3c76913ba",
+    "cosmos3_edge/gemm.py": "6052f73f0a8620da163ee3672557cadb4c9c8c025e677befb8d615f5f95db906",
+    "native_pi0/norm.cu": "6a8b2fdebe2737f8c00fc1e091df44c211771efa5c504b1af1d3344697777733",
+    "native_pi0/normalization.py": "f9c780c6933c496bbe8d23150c0fadc76dec3186595939e12ee77d95c2c4b4ad",
+    "native_pi0/tcgen_probe.cu": "65bd31e9be332a068904a3810ae94641770b3c585db917e93492fab825558b5e",
+    "cosmos3_edge/tests/validate_generator.py": "7d21dc2284211065b9fff345eacb0e030417d7eb81e91bbc5869e39c73abed9b"
+  },
+  "results": [
+    {
+      "layers": [
+        0
+      ],
+      "rows": 3,
+      "understanding_rows": 5,
+      "splits": 1,
+      "checks": [
+        {
+          "final": {
+            "relative_l2": 0.005743948079607548,
+            "cosine": 0.9999835034472252
+          },
+          "per_layer": [
+            {
+              "layer": 0,
+              "hidden": {
+                "relative_l2": 0.0050139306731075755,
+                "cosine": 0.9999875064496705
+              },
+              "generated_k": {
+                "relative_l2": 0.0,
+                "cosine": 1.0
+              },
+              "generated_v": {
+                "relative_l2": 0.0,
+                "cosine": 1.0000000000000002
+              }
+            }
+          ]
+        },
+        {
+          "final": {
+            "relative_l2": 0.004924516393931152,
+            "cosine": 0.9999880136097288
+          },
+          "per_layer": [
+            {
+              "layer": 0,
+              "hidden": {
+                "relative_l2": 0.00475856278500227,
+                "cosine": 0.9999900353652212
+              },
+              "generated_k": {
+                "relative_l2": 0.0,
+                "cosine": 1.0000000000000002
+              },
+              "generated_v": {
+                "relative_l2": 0.0,
+                "cosine": 0.9999999999999999
+              }
+            }
+          ]
+        },
+        {
+          "final": {
+            "relative_l2": 0.004684295214126745,
+            "cosine": 0.999989028933359
+          },
+          "per_layer": [
+            {
+              "layer": 0,
+              "hidden": {
+                "relative_l2": 0.0039591180272888936,
+                "cosine": 0.9999921636168615
+              },
+              "generated_k": {
+                "relative_l2": 0.0,
+                "cosine": 0.9999999999999999
+              },
+              "generated_v": {
+                "relative_l2": 0.0,
+                "cosine": 1.0
+              }
+            }
+          ]
+        }
+      ],
+      "nodes": 157,
+      "queue_plan": {
+        "dependency_groups": 9,
+        "dependency_updates": 157,
+        "nodes": 157,
+        "logical_edges": 1609
+      },
+      "static_prefix": "bit-exact",
+      "node_order": "permuted",
+      "input_unchanged": true,
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, EdgeEngineGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4>, EnginePreparation, EngineAttention, ScheduledEdgeKVReady, EngineNorm>(EdgeEngineGlobals)",
+      "gpu_ms": {
+        "p10": 0.678499186038971,
+        "p50": 0.6863519847393036,
+        "p90": 0.6928896009922028
+      }
+    }
+  ]
+}

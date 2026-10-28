@@ -1,0 +1,276 @@
+{
+  "timestamp_utc": "2026-10-28T02:16:25.766169+00:00",
+  "scope": "Dense native FFN, synthetic activations; not full model parity or calibrated precision selection",
+  "gpu": "NVIDIA B200",
+  "source_sha256": {
+    "cosmos3_edge/dense_dag.cuh": "8723a319e59c509190a62d8cc63e0d455f1f1e799478aba2fad415b71cebd65a",
+    "cosmos3_edge/gemm.cuh": "2b421db5638cd32ff115126f714c1e3ed053a1e1352613be849e54af357a19c6",
+    "cosmos3_edge/gemm.py": "e08aee27cce649396330825d3e04a79492fb68593b3c3e451828e4787e41b6c7",
+    "cosmos3_edge/schedule.py": "639eafd0b451644d2f2b12b055946d7e0eaf85aaa0849e149809c344a2ea6a56",
+    "cosmos3_edge/ffn.py": "38663abd03e47c92fad1926bef8d180672748d9a98ed77a9aa0c238bce24cf1f",
+    "native_pi0/tcgen_probe.cu": "33038729b6a0ca3d7e4b77e7ec381ee5b74750bd33346af6346e8587c0ed7b30",
+    "cosmos3_edge/tests/validate_dense_ffn.py": "cd4bd737490a4ca7d62b221d16489a8b6d8aadda1a2b93775ae65a20f1cba82f"
+  },
+  "results": [
+    {
+      "m": 60,
+      "hidden": 2048,
+      "intermediate": 9216,
+      "up_precision": "bf16",
+      "weight_source": "checkpoint",
+      "activations": "synthetic",
+      "epochs": [
+        {
+          "native_math": {
+            "relative_l2": 0.000354564584301887,
+            "cosine": 0.9999999371797711
+          },
+          "bf16_reference": {
+            "relative_l2": 0.002978829512845262,
+            "cosine": 0.9999955637521796
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.0003259597956503151,
+            "cosine": 0.9999999469152699
+          },
+          "bf16_reference": {
+            "relative_l2": 0.0028516888182975905,
+            "cosine": 0.9999959416232773
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.0003060671512458149,
+            "cosine": 0.9999999531702081
+          },
+          "bf16_reference": {
+            "relative_l2": 0.00291135174646982,
+            "cosine": 0.999995763920803
+          },
+          "split_output": "exact"
+        }
+      ],
+      "diagnostics": "all nodes once; dependency timestamp ordering; exact epoch counters",
+      "stage_activity": [
+        {
+          "stage": 0,
+          "active_ctas": 16,
+          "consumer_span_us": 121.024,
+          "median_consumer_interval_us": 18.784
+        },
+        {
+          "stage": 1,
+          "active_ctas": 9,
+          "consumer_span_us": 223.84,
+          "median_consumer_interval_us": 104.72
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, EdgeDenseGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4> >(EdgeDenseGlobals)",
+      "gpu_ms": {
+        "p10": 0.2997184097766876,
+        "p50": 0.3097120076417923,
+        "p90": 0.31885439455509185
+      }
+    },
+    {
+      "m": 60,
+      "hidden": 2048,
+      "intermediate": 9216,
+      "up_precision": "fp8",
+      "weight_source": "checkpoint",
+      "activations": "synthetic",
+      "epochs": [
+        {
+          "native_math": {
+            "relative_l2": 0.0003658176610571633,
+            "cosine": 0.9999999335111206
+          },
+          "bf16_reference": {
+            "relative_l2": 0.021308047535722914,
+            "cosine": 0.9997764283052984
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.0002546340452122324,
+            "cosine": 0.9999999676447879
+          },
+          "bf16_reference": {
+            "relative_l2": 0.021585376902784628,
+            "cosine": 0.9997677251847745
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.00020729043368471824,
+            "cosine": 0.9999999785348587
+          },
+          "bf16_reference": {
+            "relative_l2": 0.02129774642151533,
+            "cosine": 0.999774925641205
+          },
+          "split_output": "exact"
+        }
+      ],
+      "diagnostics": "all nodes once; dependency timestamp ordering; exact epoch counters",
+      "stage_activity": [
+        {
+          "stage": 0,
+          "active_ctas": 16,
+          "consumer_span_us": 111.456,
+          "median_consumer_interval_us": 16.992
+        },
+        {
+          "stage": 1,
+          "active_ctas": 9,
+          "consumer_span_us": 221.44,
+          "median_consumer_interval_us": 105.584
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, EdgeDenseGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4> >(EdgeDenseGlobals)",
+      "gpu_ms": {
+        "p10": 0.26606720089912417,
+        "p50": 0.2773279994726181,
+        "p90": 0.286409592628479
+      }
+    },
+    {
+      "m": 6300,
+      "hidden": 2048,
+      "intermediate": 9216,
+      "up_precision": "bf16",
+      "weight_source": "checkpoint",
+      "activations": "synthetic",
+      "epochs": [
+        {
+          "native_math": {
+            "relative_l2": 0.00034138018501497487,
+            "cosine": 0.9999999418457668
+          },
+          "bf16_reference": {
+            "relative_l2": 0.0028706290162931396,
+            "cosine": 0.9999958865054374
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.000334754783321054,
+            "cosine": 0.9999999440784544
+          },
+          "bf16_reference": {
+            "relative_l2": 0.0028737973209753695,
+            "cosine": 0.9999958770102768
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.00033229431219986304,
+            "cosine": 0.9999999448915802
+          },
+          "bf16_reference": {
+            "relative_l2": 0.002872839635320096,
+            "cosine": 0.9999958791907466
+          },
+          "split_output": "exact"
+        }
+      ],
+      "diagnostics": "all nodes once; dependency timestamp ordering; exact epoch counters",
+      "stage_activity": [
+        {
+          "stage": 0,
+          "active_ctas": 118,
+          "consumer_span_us": 2126.208,
+          "median_consumer_interval_us": 15.232
+        },
+        {
+          "stage": 1,
+          "active_ctas": 141,
+          "consumer_span_us": 722.624,
+          "median_consumer_interval_us": 86.352
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, EdgeDenseGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4> >(EdgeDenseGlobals)",
+      "gpu_ms": {
+        "p10": 2.895817518234253,
+        "p50": 2.9026399850845337,
+        "p90": 2.9203359603881838
+      }
+    },
+    {
+      "m": 6300,
+      "hidden": 2048,
+      "intermediate": 9216,
+      "up_precision": "fp8",
+      "weight_source": "checkpoint",
+      "activations": "synthetic",
+      "epochs": [
+        {
+          "native_math": {
+            "relative_l2": 0.0002428343037608009,
+            "cosine": 0.9999999705683115
+          },
+          "bf16_reference": {
+            "relative_l2": 0.023740782514277445,
+            "cosine": 0.9997203462069817
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.00024495959991743316,
+            "cosine": 0.9999999700521678
+          },
+          "bf16_reference": {
+            "relative_l2": 0.023767400343675856,
+            "cosine": 0.9997208888183972
+          },
+          "split_output": "exact"
+        },
+        {
+          "native_math": {
+            "relative_l2": 0.0002511115631397382,
+            "cosine": 0.9999999685313781
+          },
+          "bf16_reference": {
+            "relative_l2": 0.023783394776767736,
+            "cosine": 0.9997201190221263
+          },
+          "split_output": "exact"
+        }
+      ],
+      "diagnostics": "all nodes once; dependency timestamp ordering; exact epoch counters",
+      "stage_activity": [
+        {
+          "stage": 0,
+          "active_ctas": 110,
+          "consumer_span_us": 2124.928,
+          "median_consumer_interval_us": 10.72
+        },
+        {
+          "stage": 1,
+          "active_ctas": 139,
+          "consumer_span_us": 727.68,
+          "median_consumer_interval_us": 86.992
+        }
+      ],
+      "cuda_launch_count": 1,
+      "kernel_symbol": "void megakernel::mk<ComputeConfig, EdgeDenseGlobals, EdgeDenseOp<__nv_bfloat16, 3>, EdgeDenseOp<__nv_fp8_e4m3, 4> >(EdgeDenseGlobals)",
+      "gpu_ms": {
+        "p10": 2.872358298301697,
+        "p50": 2.8864160776138306,
+        "p90": 2.8991232395172117
+      }
+    }
+  ]
+}

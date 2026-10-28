@@ -1,0 +1,123 @@
+{
+  "timestamp_utc": "2026-10-28T02:24:56.324213+00:00",
+  "gpu": "NVIDIA B200",
+  "scope": "Standalone native QK preparation on synthetic activations; not attention/layer/model fidelity",
+  "source_sha256": {
+    "cosmos3_edge/rope.cuh": "c4375e2abf6d2522d0dcc269e87a279a98924886c09f517493268da126bf32b5",
+    "cosmos3_edge/rope.py": "23fb2275cc88237d62b66f8d10b3b4746df064fe2711a361fa434d6e5e842d95",
+    "cosmos3_edge/tests/validate_rope.py": "5dc4337d4edd3c6adb5cb4f77c8528275d3d80c853c891992279b8430114f01f",
+    "cosmos3_edge/tests/rope_reference.cu": "99b51b5db3a362386fdc93c63969ee294ba6fb115efecbc1508a0d38e7ce0bd3",
+    "third_party/cosmos-framework/cosmos_framework/model/generator/reasoner/nemotron_3_dense_vl/nemotron_3_dense_vl.py": "4ab43a1c0e638484851a4009fcee6241085cffa6ba02e31ef7ee2d4fe1b8f0ba",
+    "third_party/FlashRT/csrc/kernels/cosmos3_edge_misc.cu": "54f18ee4a93bf08b4fb86b264713587ce35fd46a4c962e2c64384790ffcc6b99"
+  },
+  "results": [
+    {
+      "rows": 3,
+      "rounding": "fused",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.003035391336479174,
+      "flashrt_fused": "exact",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.02875839937478304,
+        "p50": 0.029632000252604485,
+        "p90": 0.030518399365246297
+      }
+    },
+    {
+      "rows": 3,
+      "rounding": "reference",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.0,
+      "flashrt_fused": "not applicable",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.029916800558567047,
+        "p50": 0.030559999868273735,
+        "p90": 0.031254399567842484
+      }
+    },
+    {
+      "rows": 60,
+      "rounding": "fused",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.0030200996916567896,
+      "flashrt_fused": "exact",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.0539776012301445,
+        "p50": 0.0545439999550581,
+        "p90": 0.05548800155520439
+      }
+    },
+    {
+      "rows": 60,
+      "rounding": "reference",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 1.9189821251849232e-05,
+      "flashrt_fused": "not applicable",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.05640000104904175,
+        "p50": 0.057103998959064484,
+        "p90": 0.058508798480033875
+      }
+    },
+    {
+      "rows": 6300,
+      "rounding": "fused",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 0.003016133176059272,
+      "flashrt_fused": "exact",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.31516799330711365,
+        "p50": 0.31696000695228577,
+        "p90": 0.3190111994743347
+      }
+    },
+    {
+      "rows": 6300,
+      "rounding": "reference",
+      "q_heads": 16,
+      "kv_heads": 8,
+      "official_mrope_tables": "exact",
+      "relative_l2_vs_official": 1.1341330288454912e-05,
+      "flashrt_fused": "not applicable",
+      "v_copy": "exact",
+      "cache_prefix_tail": "preserved",
+      "epochs": 3,
+      "cuda_launch_count": 1,
+      "gpu_ms": {
+        "p10": 0.32889278829097746,
+        "p50": 0.33084799349308014,
+        "p90": 0.33317120373249054
+      }
+    }
+  ]
+}

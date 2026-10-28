@@ -18,5 +18,17 @@
   "cutlass": {
     "url": "https://github.com/NVIDIA/cutlass.git",
     "rev": "da5e086dab31d63815acafdac9a9c5893b1c69e2"
+  },
+  "cosmos": {
+    "url": "https://github.com/NVIDIA/cosmos.git",
+    "rev": "0c9e2f1330b235c87dc77d7af489c78a901c4c9e"
+  },
+  "Cosmos3-Edge": {
+    "url": "https://huggingface.co/nvidia/Cosmos3-Edge",
+    "rev": "344d602b128d1bbdacb43b08d0a3626f46343e29"
+  },
+  "cosmos-framework": {
+    "url": "https://github.com/NVIDIA/cosmos-framework.git",
+    "rev": "cc28c0c36bf8f39d5d0a7afe71e237178f180155"
   }
 }

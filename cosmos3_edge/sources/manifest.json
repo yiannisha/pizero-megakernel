@@ -1,0 +1,40 @@
+{
+  "checkpoint": {
+    "repo": "nvidia/Cosmos3-Edge",
+    "revision": "344d602b128d1bbdacb43b08d0a3626f46343e29"
+  },
+  "files": {
+    "config.json": {
+      "local": "config.json",
+      "sha256": "ffb75b654e65d10e337ea07f20ac4eadc3775dd22c9a8194c87c3b68df5c8f5f"
+    },
+    "transformer/config.json": {
+      "local": "transformer__config.json",
+      "sha256": "8c3c0945e7e66b2f59cbac80aace9db04edb4230fa0931bf64d4c12f51cbc81f"
+    },
+    "scheduler/scheduler_config.json": {
+      "local": "scheduler__scheduler_config.json",
+      "sha256": "a41e41fdf4c81536831a9f20a30ff34326df9871d796f54896d857ad53ff8b53"
+    },
+    "transformer/diffusion_pytorch_model.safetensors.index.json": {
+      "local": "transformer__diffusion_pytorch_model.safetensors.index.json",
+      "sha256": "13a947ce2f9e546fe5aee7e2303aa3e6f1bbf08ff7a44a61d959ee094d01f2dc"
+    },
+    "vae/config.json": {
+      "local": "vae__config.json",
+      "sha256": "2af4752d63e8b308b8bfd29798ec6663886583ab228d7c643f559612c54df1ca"
+    },
+    "transformer/diffusion_pytorch_model-00001-of-00002.safetensors.header.json": {
+      "local": "diffusion_pytorch_model-00001-of-00002.safetensors.header.json",
+      "sha256": "8e48593607948b5b3ab2ece3330f823e59d0d57966564a77871b2d2b27f16667"
+    },
+    "transformer/diffusion_pytorch_model-00002-of-00002.safetensors.header.json": {
+      "local": "diffusion_pytorch_model-00002-of-00002.safetensors.header.json",
+      "sha256": "d64e68b5ca8906bd8a0a0f3de59d721731d116fb98640593aa1af7b8b87dbcb3"
+    },
+    "weight_files.json": {
+      "local": "weight_files.json",
+      "sha256": "87b17ebd28a1d7024a8cc38836f50f265a2a8eb6ea1ec63635e7a9b9e63e4bc8"
+    }
+  }
+}

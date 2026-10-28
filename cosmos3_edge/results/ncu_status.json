@@ -1,0 +1,9 @@
+{
+  "timestamp_utc": "2026-10-28T02:14:15.234451+00:00",
+  "command": "ncu --kernel-name-base demangled --kernel-name regex:.*EdgeDenseGlobals.* --launch-count 1 --set basic --force-overwrite -o cosmos3_edge/results/dense_ffn_profile python cosmos3_edge/tests/validate_dense_ffn.py --quick --sanitizer",
+  "status": "hardware counters unavailable",
+  "errors": [
+    "==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0. For instructions on enabling permissions and to get more information see https://developer.nvidia.com/ERR_NVGPUCTRPERM"
+  ],
+  "profile_created": false
+}

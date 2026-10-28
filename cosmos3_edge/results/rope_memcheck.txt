@@ -1,0 +1,9 @@
+========= COMPUTE-SANITIZER
+make: Entering directory '/workspace/pizero-megakernel/cosmos3_edge'
+make: 'build/rope_reference.so' is up to date.
+make: Leaving directory '/workspace/pizero-megakernel/cosmos3_edge'
+{"rows": 3, "rounding": "fused", "q_heads": 16, "kv_heads": 8, "vectors_per_task": 192, "official_mrope_tables": "exact", "relative_l2_vs_official": 0.003035391336479174, "flashrt_fused": "exact", "v_copy": "exact", "cache_prefix_tail": "preserved", "epochs": 3}
+{"rows": 3, "rounding": "reference", "q_heads": 16, "kv_heads": 8, "vectors_per_task": 192, "official_mrope_tables": "exact", "relative_l2_vs_official": 0.0, "flashrt_fused": "not applicable", "v_copy": "exact", "cache_prefix_tail": "preserved", "epochs": 3}
+{"rows": 17, "rounding": "fused", "q_heads": 16, "kv_heads": 8, "vectors_per_task": 192, "official_mrope_tables": "exact", "relative_l2_vs_official": 0.0030563132766709025, "flashrt_fused": "exact", "v_copy": "exact", "cache_prefix_tail": "preserved", "epochs": 3}
+{"rows": 17, "rounding": "reference", "q_heads": 16, "kv_heads": 8, "vectors_per_task": 192, "official_mrope_tables": "exact", "relative_l2_vs_official": 0.0, "flashrt_fused": "not applicable", "v_copy": "exact", "cache_prefix_tail": "preserved", "epochs": 3}
+========= ERROR SUMMARY: 0 errors
