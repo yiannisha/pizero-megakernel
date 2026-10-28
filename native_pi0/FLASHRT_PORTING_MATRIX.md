@@ -29,11 +29,12 @@ candidate inside `megakernel::mk`, including its dependency and resource costs.
 
 | Source and exact symbol | Operation, stage, target shapes / precision | Hardware and fusion | Quantization / scaling | Classification, π0 applicability and B200 changes | Native implementation and numerical / benchmark gate | Status / outcome |
 |---|---|---|---|---|---|---|
-| `csrc/gemm/fp4/cutlass_fp4_gemm_geglu_il_sm100.cu`: `cutlass_fp4_gemm_geglu_il`, `cutlass_fp4_gemm_geglu_il_hw`, `cutlass_fp4_gemm_geglu_il_hw_v10` | Prefix gate/up K=2048, N=32768; expert K=1024, N=8192; packed FP4 operands, FP32 accumulators, FP4 result | SM100 block-scaled tensor ops; 128×256×256 and skinny 128×64×256 tiles; adjacent gate/up accumulator columns; GELU×up, compact half-width stores | E2M1, UE4M3 per 16; A row-major, B column-major, alignment 32 elements; SFD for compact output must agree with consumer layout | Transfer with native VM redesign; directly applicable GeGLU semantics. Host `GemmUniversalAdapter` cannot execute inside VM | Port MMA mainloop and compact epilogue; allocate TMEM and shared stages through VM. Compare dequantized output to BF16 GeGLU and FlashRT, then full FFN and end-to-end; M=51,256,768 | Unported; no measurements |
-| `csrc/gemm/fp4/cutlass_fp4_gemm_siglip_ffn_sm100.cu`: `cutlass_fp4_gemm_bias_gelu_fp4out`, `cutlass_fp4_gemm_bias_res_fp16` | SigLIP up 1152→4304 and down 4304→1152, M=256 per view; FP4 inputs | SM100 CUTLASS device math; up bias+GELU+FP4, down bias+residual to FP16 | Block scales and output norm constant (source sets 1); preserve padded hidden columns and subsequent compaction | Transfer with native VM redesign. FP16 source output requires explicit comparison to chosen BF16 policy | Native GEMM epilogues, deterministic padded SF regions; compare complete FFN, including non-multiple tile widths, before timing | Unported; no measurements |
-| `csrc/fused_fp4/siglip_ln_vec.cu`: `layer_norm_fp8_vec_kernel`, `layer_norm_mul_fp4_sfa_vec_kernel`, wrappers `layer_norm_fp8_vec_fp16`, `layer_norm_mul_fp4_sfa_vec_fp16` | SigLIP D=1152; FP16 input, affine LN to FP8 or FP4 | 128 source threads per row; one 16-element quant block per thread; two int4 input loads; register cached values; FP32 two-pass variance, warp/block reductions | FP4 path rounds normalized affine result to FP16 before quantization; optional AWQ inverse scale; amax/6 rounded to E4M3; source software E2M1 threshold ties use `<=` | Transfer with native VM redesign; adapt 128-thread reduction to VM consumer warp groups. Source scale clamp 1e-12 can round to zero: handle zero-scale blocks explicitly and test | Native norm producer with final scale layout writes; preserve or deliberately validate rounding changes. Compare constants, zero, tiny, outlier and representative activations; benchmark fused LN→projection | Unported; no measurements |
+| `csrc/gemm/fp4/cutlass_fp4_gemm_geglu_il_sm100.cu`: `cutlass_fp4_gemm_geglu_il`, `cutlass_fp4_gemm_geglu_il_hw`, `cutlass_fp4_gemm_geglu_il_hw_v10` | Prefix gate/up K=2048, N=32768; expert K=1024, N=8192; packed FP4 operands, FP32 accumulators, FP4 result | SM100 block-scaled tensor ops; 128×256×256 and skinny 128×64×256 tiles; adjacent gate/up accumulator columns; GELU×up, compact half-width stores | E2M1, UE4M3 per 16; A row-major, B column-major, alignment 32 elements; SFD for compact output must agree with consumer layout | Transfer with native VM redesign; directly applicable GeGLU semantics. Host `GemmUniversalAdapter` cannot execute inside VM | Port MMA mainloop and compact epilogue; allocate TMEM and shared stages through VM. Compare dequantized output to BF16 GeGLU and FlashRT, then full FFN and end-to-end; M=51,256,768 | Native 128×128×K MMA and compact GeGLU epilogue validated in scheduled synthetic FFN cores; full tile-family search and model integration remain open. See progress and timing sections below |
+| `csrc/gemm/fp4/cutlass_fp4_gemm_siglip_ffn_sm100.cu`: `cutlass_fp4_gemm_bias_gelu_fp4out`, `cutlass_fp4_gemm_bias_res_fp16` | SigLIP up 1152→4304 and down 4304→1152, M=256 per view; FP4 inputs | SM100 CUTLASS device math; up bias+GELU+FP4, down bias+residual to FP16 | Block scales and output norm constant (source sets 1); preserve padded hidden columns and subsequent compaction | Transfer with native VM redesign. FP16 source output requires explicit comparison to chosen BF16 policy | Native GEMM epilogues, deterministic padded SF regions; compare complete FFN, including non-multiple tile widths, before timing | Native padded 4304 FFN core validated with bias/GELU/FP4 and bias/residual BF16 output; full SigLIP and FP16/BF16 policy comparison remain open. See progress sections below |
+| `csrc/fused_fp4/siglip_ln_vec.cu`: `layer_norm_fp8_vec_kernel`, `layer_norm_mul_fp4_sfa_vec_kernel`, wrappers `layer_norm_fp8_vec_fp16`, `layer_norm_mul_fp4_sfa_vec_fp16` | SigLIP D=1152; FP16 input, affine LN to FP8 or FP4 | 128 source threads per row; one 16-element quant block per thread; two int4 input loads; register cached values; FP32 two-pass variance, warp/block reductions | FP4 path rounds normalized affine result to FP16 before quantization; optional AWQ inverse scale; amax/6 rounded to E4M3; source software E2M1 threshold ties use `<=` | Transfer with native VM redesign; adapt 128-thread reduction to VM consumer warp groups. Source scale clamp 1e-12 can round to zero: handle zero-scale blocks explicitly and test | Native norm producer with final scale layout writes; preserve or deliberately validate rounding changes. Compare constants, zero, tiny, outlier and representative activations; benchmark fused LN→projection | Native vectorized normalization with FP4/FP8 output, affine/AWQ inverse scale and rounding controls validated; scheduled normalization → FFN integration numerically validated. No observation-calibrated AWQ or full SigLIP yet |
+| `csrc/kernels/fused_qkv_attention.cu`: `flash_rt::prefill_attention::fused_qkv_attention_kernel`, `fused_qkv_attention` | SigLIP M=256/head_dim=72; source also head_dim=64, native extension head_dim=256 for prefix/expert; BF16/FP16 Q/K/V | Four source warps per 64-query tile, 64-key chunks, register-prefetched K/V, shared staging, `mma.sync.m16n8k16`, FP32 online softmax; bias and rotate-half RoPE during staging | Q is multiplied by scale×log2(e) before staged 16-bit rounding; probabilities round to the operand dtype for PV; no global activation scale | Transfer with VM redesign; SM100 supports the source BF16/FP16 MMA. Rectangular GQA and exact state/action masks require π0 adaptation | `native_attention::attend` / `AttentionOp` use VM pages and consumer barriers; CPU FP32 mask/RoPE reference, pinned source ULP gate, driver launch tracing and sanitizer checks; page-address caching has a reproducible baseline switch | QKV/O dataflow and split-KV validated as synthetic components; rotated KV-cache/model integration remains open. See attention results below |
 | `flash_rt/models/pi0/pipeline_rtx.py`: `Pi0Pipeline` | Complete π0 orchestration; vision 27 layers, prefix/expert 18 each; suffix horizon+1 | Source uses external GEMMs and graph capture, which cannot be retained | FP16 activation policy with static FP8 scales; norm weights folded into projections; action output weights pre-scaled by -1/steps | Math transfers; host orchestration is not transferable. Unlike π0.5, standard RMSNorm, state projection and action/time MLP required | Compile static native instruction schedule; state row sees prefix+self only, actions see all suffix. Reference identical OpenPI checkpoint, tokens and noise at each step | Reviewed dimensions and mask; no native model |
-| `include/config.cuh` in Megakernels: `default_config` | VM resource foundation | 16 consumer warps plus controller/load/store/MMA warps; 16KiB pages, 13-page assertion; two instruction stages | No existing π0 precision policy | Requires explicit resource redesign for TCGen05, not an independent runtime | Prove TMEM lifetime, async completion, page ownership and forward progress before integrating tensor-core instructions | Resource assumptions inspected; no changes yet |
+| `include/config.cuh` in Megakernels: `default_config` | VM resource foundation | 16 consumer warps plus controller/load/store/MMA warps; 16KiB pages, 13-page assertion; two instruction stages | No existing π0 precision policy | Requires explicit resource redesign for TCGen05, not an independent runtime | Prove TMEM lifetime, async completion, page ownership and forward progress before integrating tensor-core instructions | Native compute configuration and explicit VM startup/fetch patches implemented and validated; shape-dependent tuning and complete model integration remain open |
 
 ## Mandatory remaining audit families
 
@@ -68,7 +69,7 @@ these gates. No SOTA claim is made.
 | `csrc/gemm/fp4/nvfp4_skinny_gemm_sm120.cu`: `gemm_kernel`, `gemm`, `gemm_bf16_act`, `pack_weight`, `quantize_weight` | Expert projection families; M grouped in 16×MT rows; BN weight rows, KC reduction slice; E2M1 operands, FP32 partials | W and SFB register prefetched before PDL wait; padded shared A and SFA; cp.async; source `nvfp4_skinny_common.cuh` uses SM120 `mma.sync...kind::mxf4nvf4...m16n8k64` | Transfer with VM redesign; SM120 block-scale MMA cannot be copied into SM100. Evaluate TCGen05 tile family versus native FP8 or W4A16 skinny math; preserve tail masking at M=51. VM counters replace PDL launch chain | Compare partials and final consumers against dequantized matmul, including K splits and M=1,16,48,51; measure complete expert latency and scratch traffic | Unported; no measurements |
 | `csrc/kernels/pi05/pi05_decoder_skinny_fp4_sm120.cu`: `residual_ada_norm_kernel`, `gate_gelu_kernel`, `action_in_norm_kernel` | Decoder width 1024; merged gate/up, half=4096 for target; FP32 split partials reduced to BF16 and FP4 | Partial scale alpha=a_gs×w_gs; residual stored BF16; source RMS square sum uses pre-round residual float values; style scales/shifts and gated residual are π0.5-specific | π0.5 semantic adaptation required. Remove style and residual gate; standard π0 RMSNorm and action/time MLP required. Explicitly validate RMS rounding order against OpenPI rather than copying source | Source fused-consumer tests establish π0.5 semantics only; create π0 layer and denoising-step comparison with identical weights/noise; final projection must update actions inside VM | Unported; no measurements |
 | `csrc/gemm/fp8_smallM_handtuned_splitk_sm120.cu`: `fp8_gemm_splitk_partial_kernel`, `mma_m16n8k32_e4m3` | Small-M O/down projections; FP8 E4M3 A/B, scratch [split,M,N] FP32 | Double-buffer shared A/B with K padding; SM120 `kind::f8f6f4` MMA; separate source reduction applies alpha and BF16 cast; empty K slices explicitly zeroed | Transfer with VM redesign. Use legal SM100 FP8 tensor-core instructions, fuse reduction into consumer, tune splits to B200 worker count. Scratch writes must be visible before ready counters | Compare split and unsplit output including empty slices; measure reduction traffic and full expert, rather than importing source's synthetic HBM claims | Unported; no measurements |
-| `csrc/gemm/fp4/nvfp4_skinny_attention_sm120.cu`: `partials_attention`, `mma_bf16` | Small query attention; source 32-key chunks and split keys, BF16 Q/K/V and FP32 accumulation | Native `mma.sync.m16n8k16` BF16 math is distinct from SM120 FP4 MMA; integrates projection partial input, uses online softmax | Transfer with VM redesign. Adapt GQA head_dim=256 and exact π0 state-row mask; integrate direct RoPE/cache store and split combine without full score materialization | Compare prefix/state/action visibility to OpenPI, including extreme logits, empty splits and variable prefix lengths; benchmark M=51 with 768+ prefix keys | Unported; no measurements |
+| `csrc/gemm/fp4/nvfp4_skinny_attention_sm120.cu`: `partials_attention`, `mma_bf16` | Small query attention; source 32-key chunks and split keys, BF16 Q/K/V and FP32 accumulation | Native `mma.sync.m16n8k16` BF16 math is distinct from SM120 FP4 MMA; integrates projection partial input, uses online softmax | Transfer with VM redesign. Adapt GQA head_dim=256 and exact π0 state-row mask; integrate direct RoPE/cache store and split combine without full score materialization | Compare prefix/state/action visibility to OpenPI, including extreme logits, empty splits and variable prefix lengths; benchmark M=51 with 768+ prefix keys | Partial port: source max/denominator/output merge now operates on native cross-CTA FP32 split-KV partials with π0 GQA/masks; measured standalone expert improvement. Projection-partial fusion and the complete skinny attention port remain open; see split-KV results below |
 | `csrc/kernels/pi05/thor/pi05_l2_prefetch.cu`: `l2_touch_kernel`, `l2_prefetch_kernel`, `l2_touch_ex_kernel` | Weight locality, arbitrary byte regions | Real ld.global.cg loads and cp.async.bulk.prefetch.L2; optional evict-last hint, pipelined loads; source separate launches/streams | Device algorithm transferable with VM redesign; host fork/join is not transferable. Schedule prefetch as native work or producer prologue, limit cache pollution and preserve page lifetimes | Profile B200 L2 hit rate, bandwidth and end-to-end latency with and without prefetch; retain only measured benefit | Unported; no measurements |
 
 Upstream `gemma/kernel.so` builds successfully with CUDA 12.8 for sm_100a.
@@ -835,3 +836,446 @@ Native GEMM, normalization, attention and complete model stages are not yet
 connected to this general queue. Their device descriptors, data dependencies,
 completion publication, performance, checkpoint parity and all full-model
 M0–M9 acceptance gates remain incomplete.
+
+### Native matrix stages connected to the device scheduler
+
+`dag_matmul.cu` connects the original native NVFP4 TMA/TCGen05 operator to the
+ready queue. Each instruction carries an explicit stage/tile/node identity.
+`Fp4Matmul` retains static task indexing for existing programs and accepts a
+fixed task in the cached runtime view for dynamic programs. Device stage
+objects hold immutable input/weight tensor maps, pointers, shapes, precision
+scales and epilogue parameters. Loader views cache scalar fields and addresses
+of the original device-global tensor maps; they do not copy tensor-map
+objects into local memory. This distinction is required for valid TMA addresses.
+
+The loader acquires each stage's tensor maps into the tensor-map proxy once
+per CTA/stage/epoch. A private epoch table records acquisition without a reset
+kernel. The launcher and consumer also cache immutable metadata, avoiding
+repeated global descriptor/shared instruction reads across asm clobbers and
+output stores. All output/scale writers execute the global async proxy fence
+and rendezvous before the leader publishes node completion. A final rendezvous
+keeps consumer warps aligned across native instructions. Down projections
+therefore become ready only after their input tiles and scales are published.
+Production forward calls no external GEMM/quantization kernels; the split
+baseline and pinned CUDA reference entrypoints are validation-only.
+
+`ResidentDagMatmul` holds caller-owned resident stages and binds a prior
+stage's packed output and scales to each consuming stage's TMA input at setup.
+It validates matching dimensions, devices and activation descales. Stage
+objects must outlive the graph. Independent instances have separate queues,
+epochs and descriptor caches; one instance requires stream ordering. Graph
+capture remains unsupported by the development epoch interface.
+
+The scheduler now groups consumers with identical prerequisite sets. One
+counter represents a shared readiness condition; the last producer publishes
+all consumers of that condition. The original parent ordering remains intact
+for scalar reference math. This reduces prefix FFN dependency decrements
+from 24,576 to 1,536 (six shared counters), expert decrements from 512 to 64,
+and vision decrements from 612 to 68. It adds no extra control node or grid
+barrier and does not broaden any consumer's prerequisite set. First use of a
+counter in an epoch uses acquire/release CAS; subsequent decrements use an
+acquire/release fetch-add, preserving cumulative publication without CAS retry
+loops. The old counter strategy remains selectable for controlled experiments.
+
+Root queue initialization is cooperative within one elected resident
+controller warp. Writers synchronize before its leader releases the ready
+phase; no other CTA is required for bootstrap progress. Root slots are ordinary
+stores protected by that phase publication. Queue polling uses loads instead
+of no-op RMWs, with longer backoff only when no task is ready. Nonempty CAS
+contention retains short backoff. Conservative variants are exposed in the
+validators for reproducible comparisons; all are tactics of the same native VM.
+
+`validate_dag_matmul.py` covers seven cases with three changed packed-input
+epochs, poisoned output scales, nondefault streams, and exact stage-by-stage
+comparison against a separately launched native baseline. Cases include:
+
+- Compact GeGLU/down: M1/K64/N256; M3/K192/N768; M129/K192/N768;
+  expert M51/K1024/N8192→4096→1024; prefix M768/K2048/N32768→16384→2048.
+- Vision GELU/down: M256/K1152/N4304 padded to 4352→1152, including bias fusion.
+- A three-stage compact GeGLU, GELU and BF16-output chain.
+
+Final projections include bias/residual fusion. Independent CPU matmul gates
+check decoded operands; separately executed FP32 projections drive the actual
+pinned CUTLASS/FlashRT quantization epilogues. Every intermediate packed payload
+and scale byte matches those CUDA references exactly. Final BF16 NRMSE is
+measured on logical rows, with observed maximum 8.67859e-6 against the unchanged
+0.005 gate. Timed repeated forwards are additionally checked for exact outputs
+and queue/epoch diagnostics afterward. Two independent 100-CTA matrix graphs
+produce their split-reference outputs exactly while their active consumer
+intervals overlap. These intervals include waiting for native MMA completion;
+they do not claim simultaneous tensor-core issue.
+
+The selected ordered and permuted reports share exact output/scale hashes and
+precision metadata, each recording one native launch per graph. Split controls
+record two or three launches, and a two-forward negative control records two.
+The kernel uses 200 registers, 8 local bytes, 10,400 static and 216,504 dynamic
+shared bytes, with configured occupancy one CTA per SM on the 148-SM B200.
+The source/patch/header hashes in the selected ordered report were checked
+against the worktree. At that revision, `native_dag_matmul.json` was a copy of the ordered
+report; the normalization integration below refreshes the canonical report.
+Named experiment files retain their historical hashes and flags.
+
+Selected synthetic event medians (including host submission gaps) are:
+
+| FFN core | One scheduled native launch | Matched split native launches |
+|---|---:|---:|
+| Expert M51/K1024/N8192 | 184.83 µs | 88.88 µs |
+| Vision M256/K1152/N4304 | 173.18 µs | 86.53 µs |
+| Prefix M768/K2048/N32768 | 1203.90 µs | 519.10 µs |
+
+The earlier timing path used permuted task IDs for both correctness and timing.
+The validator now distinguishes regular stage/tile order from that stress
+schedule. Both use identical inputs, descales and epilogues; output/scale hashes
+match. Consumer activity diagnostics show remaining imbalance: in the recorded
+ordered prefix replay, 105 of 148 CTAs performed gate work, with a maximum of
+37 gate tiles on one CTA, and 52 CTAs performed the 96 down tiles. These are
+observations of work distribution, not a measured attribution of every latency
+cost. Metadata caching and shared dependency counters help some cases, but the
+scheduled core still regresses the split baseline. No SOTA speedup is claimed.
+
+The FFN core starts from packed input; it is not a complete normalized transformer
+block. Native normalization and attention still need connection to this general
+scheduler, followed by all vision/prefix/expert layers and denoising steps.
+Checkpoint calibration, pretrained policy parity, rollouts and end-to-end
+benchmarking remain absent. No full-model M0–M9 milestone is completed here.
+
+The final selected revision passes both CUDA memcheck and synccheck with zero
+errors on all 18 scalar DAG cases and all seven matrix/FFN cases, including the
+concurrent-instance controls. This revalidation includes cooperative bootstrap,
+shared prerequisite counters, fetch-add decrements, cached tensor-map acquisition,
+and all-role runtime metadata views. The scalar one-launch report was refreshed
+in `native_dag_scheduler.json`; its observed independent-root overlap is
+881,600 ns. Current hashes and all one-launch/post-timing output gates in the
+canonical, ordered and permuted matrix reports were checked after the run.
+These checks establish the selected development runtime's tested correctness;
+they do not resolve the remaining scheduling performance regression or any
+pretrained/full-model acceptance gate.
+
+## Scheduled normalization and FFN integration
+
+The development DAG now accepts `ResidentNorm` as a producer of packed FP4
+rows, then executes the dependent interleaved GeGLU/down or SigLIP GELU/down
+stages under the same original `megakernel::mk` invocation. Normalization uses
+four consumer warps and register-cached vector loads, with optional residual,
+affine and AWQ inverse scaling. Each completed row group publishes its output
+through the existing release/acquire dependency counters after every writer's
+async-proxy fence. Groups of 1, 4 and 8 rows are supported; no grid barrier or
+host-launched normalization is required by the integrated forward.
+
+`validate_dag_matmul.py --normalized-input --profile` checks all seven existing
+matrix cases starting from BF16 RMSNorm or FP16 SigLIP LayerNorm input. It checks
+normalization data/scales/residual byte-for-byte against the standalone native
+producer, all packed matrix outputs against pinned CUDA epilogue references,
+and the whole chain against independent CPU normalization and decoded-operand
+matrix math. Changed inputs, repeated epochs, row tails, nondefault streams and
+independent concurrent instances are covered. CUPTI counts one integrated
+launch versus three or four split launches. These are synthetic FFN chains;
+the final matrix residual is supplied separately and is not yet bound to the
+normalization residual state. Attention, complete transformer blocks, pretrained
+weights and all full-model acceptance gates remain open.
+
+Validation exposed a packed-storage issue rather than a normalization math
+error: the pinned ThunderKittens TMA map rounds the innermost dimension up to
+the swizzle width while preserving the logical row stride. A partial final
+sector can consequently access bytes beyond the tensor's logical allocation.
+A three-stage case intermittently faulted on its weight TMA load under memcheck,
+including an isolated reproduction and an unsuccessful per-task descriptor
+acquisition experiment. `storage.py::packed_tma_buffer` now backs every resident
+packed input and producer output with 127 initialized trailing bytes. Logical
+shapes and row strides remain unchanged; out-of-range FP4 groups already have
+zero block scales. The validator checks the backing extent and zero guard bytes.
+Two full memcheck runs after this change pass all seven cases and concurrent
+controls with zero errors. `results/native_dag_norm_validation.json` retains the
+pre-fix failure and post-fix outcomes; one earlier isolated pass did not justify
+dismissing the intermittent failure.
+
+Earlier matrix timing sections and named experiments describe their recorded
+source revisions. The normalized report includes its own complete source hashes,
+including the shared storage allocator. This integration does not establish a
+performance win or close M0–M9.
+
+The refreshed normalized-chain report records synthetic event medians of
+255.98 / 106.94 µs for expert, 242.32 / 103.49 µs for vision, and
+1309.02 / 561.22 µs for prefix (scheduled / matched split). Both boundaries
+include normalization, identical packed weights, descales, bias/residual policy
+and reused outputs; event intervals include host submission gaps. All seven
+cases are bit-exact against split execution, with maximum whole-chain NRMSE
+3.79888e-6 against the independent reference (limit 0.005). The remaining
+approximately 2.3–2.4× regression on the larger normalized cases is unresolved.
+
+The concurrent-instance validation now queues both graph submissions behind a
+validation-only CUDA event gate. An auxiliary delay on a separate stream lets
+host submission finish before releasing the graphs; it is outside `forward`,
+launch-count scopes and every latency measurement. This avoids interpreting
+host submission serialization of short graphs as a runtime concurrency failure.
+Exact outputs, per-node dependency diagnostics and positive active-node overlap
+remain required in the unsanitized profile run; sanitizer runs permit tool
+serialization.
+
+Post-fix full synccheck also passes all seven normalized cases and concurrent
+controls with zero errors, including the explicit guard checks and submission
+gate. The refreshed packed-input report passes all seven cases, current source
+hashes and launch gates; expert / vision / prefix event medians are
+188.64 / 175.68 / 1207.50 µs scheduled versus 89.34 / 87.09 / 501.46 µs split.
+
+## Native attention port
+
+`attention.cu` ports the actual pinned FlashRT prefill device math, including
+vectorized bias/RoPE staging, next-chunk register prefetch, warp MMA QK/PV,
+FP32 online softmax and output rounding. It replaces the standalone CUDA grid
+with the original VM's static tile schedule. The shared K/V tiles occupy VM
+pages: loaders release unused pages, consumers acquire and retire the used
+pages, and a 128-thread consumer barrier replaces CTA-wide barriers. Physical
+page addresses are cached without assuming contiguous page mappings. No
+FlashRT host kernel, PyTorch model operation or external GEMM is invoked by
+`ResidentAttention.forward()`.
+
+The native extension supports rectangular GQA at head dimension 256 in addition
+to the source's 64/72 dimensions. Optional boolean masks combine with π0 suffix
+visibility: state query zero sees prefix+state; action queries see all keys.
+Fully masked rows produce zero. The validator mutates action K/V and requires
+the state output to remain exactly unchanged. Separate query/key RoPE tables
+allow their different position ranges; final projection/cache layout integration
+is not yet implemented.
+
+`validate_attention.py` covers 12 cases with three input replays, nondefault
+streams, fused row-strided QKV views, FP16/BF16, bias, RoPE, GQA, masks, query/key
+tails, fully masked chunks/rows and large uniform logits. Model-shaped cases
+include three independent SigLIP views (256×16×72), prefix (768 queries, eight
+Q heads/one KV head, dimension 256), and expert (51 queries, 819 keys, dimension
+256). Independent CPU FP32 attention requires NRMSE ≤ 0.01; observed maximum is
+0.004565. This gate includes operand/probability rounding and is not a pretrained
+policy fidelity guarantee.
+
+Pinned FlashRT kernels independently validate every supported non-causal MHA
+case. The normal FMA build has sparse one-ULP output differences on the large
+SigLIP cases; observed source NRMSE is below 8e-6. A diagnostic build with
+`--disable-fma` restores exact source parity, identifying FP32 contraction as
+the cause. Normal validation requires at most one output ULP and source NRMSE
+≤ 1e-4; the diagnostic build additionally requires identical output bits.
+CUPTI confirms one native launch per forward and two for a two-forward negative
+control. Launch tracing runs separately from sanitizers because Compute
+Sanitizer and CUPTI cannot both own the subscriber interface.
+
+The selected cached-page operator passes full memcheck and synccheck with zero
+errors on all 12 cases. The normal, `--uncached-pages` and `--disable-fma`
+reports preserve exact source hashes and build flags. These are standalone
+operator results; no full transformer or model milestone is completed.
+
+At the initial unsplit revision, the expert schedule had
+only eight compute tiles (one 64-row query tile × eight heads), so most resident
+workers had no attention math. The split-KV work below addresses this component.
+Projection producer dependencies, fused RoPE/KV writes and integration with
+the complete expert/prefix/SigLIP layers remain required. The FlashRT skinny attention family
+is still an open port; this prefill-derived extension does not replace that
+work or establish an optimized end-to-end attention implementation.
+
+Historical page-address experiment before split-KV: synthetic event medians
+in microseconds (including host submission gaps) are recorded below. Setup,
+transfers and references are outside timing; current canonical reports also
+include the subsequent split-KV implementation.
+
+| Attention case | Cached VM pages | Per-access page lookup | Standalone FlashRT |
+|---|---:|---:|---:|
+| siglip | 76.54 | 93.09 | 24.85 |
+| siglip-bf16 | 84.34 | 101.41 | 27.09 |
+| prefix | 435.49 | 448.82 | Source does not support this GQA/head dimension |
+| expert | 456.43 | 476.30 | Source does not support this GQA/head dimension |
+| long-reference | 90.58 | 108.48 | 32.67 |
+
+Caching improves these operator cases but does not close the standalone
+FlashRT latency gap on supported shapes. At that revision the kernel reported
+240 registers, 3,648 local bytes, 10,528 static and 216,504 dynamic shared bytes,
+and one resident CTA per SM. These are resource attributes, not hardware
+counter measurements of utilization or memory traffic. Two independent
+100-CTA attention instances also match their serial outputs bit-for-bit;
+this checks independent-stream submissions without claiming observed active
+overlap. No whole-model performance benefit is established.
+
+## Native split-KV and last-producer reduction
+
+The source `nvfp4_skinny_attention_sm120.cu::partials_attention_kernel` merges
+warp-local online-softmax statistics using a global maximum, rescaled FP32
+denominator and weighted partial outputs. The native port applies that math to
+independently scheduled CTA key partitions at the actual π0 head dimension 256.
+Each partition writes FP32 partial outputs plus FP32 maximum/denominator values.
+Every writer fences and joins a consumer barrier before the leader publishes an
+acquire/release completion count. The last producer for a query tile merges in
+fixed partition order and writes the final FP16/BF16 output. Other producers
+retire immediately; no CTA waits for a nonresident producer or a grid barrier.
+The original VM still fetches static instructions and owns shared pages/TMEM.
+
+Completion counters contain an epoch and arrival count. First arrivals lazily
+initialize the current epoch, so `forward()` does not reset buffers or dispatch
+an initialization kernel. A scalar host epoch advances at launch; overlapping
+calls on the same instance remain unsupported and split instances reject graph
+capture before advancing the epoch. Independent instances have separate scratch
+and counters. The tested graph-capture rejection leaves the instance usable by
+a subsequent normal forward.
+
+`ResidentAttention(..., splits=8)` and `validate_attention.py --kv-splits 8`
+select this path. Split count is a setup choice, not a host-side alternative
+runtime. The validator poisons partial data/statistics with NaNs, changes queries
+across three replays, checks exact epoch/completion counts, and verifies masks,
+state invariance and independent-instance results. All 12 cases pass numerical
+and one-launch gates; full memcheck and synccheck pass with zero errors for both
+unsplit and eight-split execution. Quick stress passes for 2, 13, 15, 16, 32 and
+64 splits, including one worker and more partitions than key chunks. The
+64-split stress also passes synccheck. `native_attention_validation.json`
+records these outcomes and the selected source hashes.
+
+Splitting changes where probabilities are rounded to BF16/FP16. Its numerical
+gates therefore compare both independent FP32 attention and the unsplit native /
+applicable pinned FlashRT outputs using NRMSE ≤ 0.01. This is distinct from the
+unsplit FMA-only one-ULP source comparison, which remains unchanged. Splitting
+is not asserted bit-exact against unsplit attention; repeated identical split
+calls and independent-instance serial controls remain bit-exact. Pretrained
+layer, velocity, action and policy gates are still open.
+
+Eight partitions in the expert case create 64 tasks, 56 with nonempty key ranges,
+in place of eight unsplit tasks. The FP32 partial/statistic/counter buffers use
+4,227,136 bytes at this shape. This improves standalone BF16 expert attention,
+but already-parallel vision and prefix cases regress with eight splits and
+retain the unsplit tactic. The measured FP16 expert with only 16 workers also
+regresses; this is not a universal precision/worker policy. These choices have
+not yet been encoded into a complete model schedule.
+
+A `--cached-merge` experiment computes factors once per row in the VM's 4 KiB
+instruction scratch for up to 15 splits, with a direct fallback above that
+limit. It passes correctness/sanitizer checks at eight splits and quick checks
+at the 15/16 boundary, but regresses measured latency. It remains disabled by
+default; the experiment report preserves its build flag and outcome. No cache
+speedup is inferred from fewer exponential evaluations alone.
+
+Selected synthetic event medians in microseconds (same inputs, masks,
+dtype and worker count; host submission gaps included):
+
+| Case | Eight-split direct merge | Matched unsplit native | Experimental cached merge |
+|---|---:|---:|---:|
+| siglip | 417.52 | 78.53 | 643.09 |
+| prefix | 1132.74 | 435.39 | 1659.33 |
+| expert | 173.50 | 456.06 | 230.86 |
+| expert-fp16 | 661.50 | 475.15 | 884.06 |
+
+The selected kernel reports 240 registers, 3,688 local bytes, 10,528 static
+and 216,504 dynamic shared bytes, and one CTA per SM. This is a standalone
+attention improvement, not an end-to-end π0 result. Projection/cache integration,
+all complete layers and denoising steps, calibration, pretrained parity and
+rollouts remain incomplete; no M0–M9 milestone or SOTA claim is closed.
+
+## BF16/FP8 projection-to-attention integration
+
+`dense.cu` / `ResidentDense` expose the existing native BF16/FP8 TCGen05 TMA
+mainloop as resident projections with direct BF16 output. Optional BF16 bias
+and residual are added to FP32 accumulators before the output conversion;
+FP32 output remains available for independent decoded-operand checks. FP8
+static descales are multiplied in FP32. Shape padding and weight transfers
+occur at setup, not in forward. This is the generic 128×128/K64 native
+foundation, not completion of FlashRT's skinny/split-K FP8 tactic family.
+
+`projection_attention.cu` executes that projection and native attention under
+one original VM invocation. Native instructions distinguish projection tiles
+from attention partitions. Attention inherits tile/partition indexing rather
+than interpreting the composite instruction ordinal as a standalone task.
+Projection tensor maps remain in global device metadata; loaders acquire the
+map proxy before TMA reads. Both operations obey the VM's page/TMEM lifecycle.
+Every producer writer fences and joins the consumer barrier before publishing
+DAG completion, so dependent vector/TMA consumers see the complete output.
+
+The Python planner binds Q/K/V views directly to the BF16 projection output.
+Dependencies include the projection row bands read by each query tile and key
+partition. Batch boundaries need not align to 128-row matrix tiles; all batches
+retain independent attention. The current dependency sets conservatively wait
+for all QKV columns in each required row band. Independent camera batches can
+therefore become ready separately, without a grid barrier between views.
+
+The chain and standalone attention share a monotonic launch epoch chosen above
+both contexts' previous epochs. This prevents a standalone validation call from
+leaving completed split counters that a subsequent combined call could mistake
+for its own epoch. Ordered calls on each instance remain required. Graph capture
+is unsupported by the combined wrapper. Dense and attention objects/buffers
+are reused; no model operation or conversion kernel runs on the host path.
+
+Validation covers 12 BF16/FP8 dense cases with BF16/FP32 output, arbitrary FP32
+descale, bias/residual, K/row/column padding and nondefault streams. Independent
+CPU checks cover both logical and padded regions. Six combined cases include
+cross-batch tile boundaries, three-view SigLIP dimensions, prefix dimensions,
+GQA, RoPE, boolean masks and split-KV. Inputs change and output/partial buffers
+are poisoned over three replays. Native projection and final attention outputs
+are bit-exact against separately launched native stages on all six cases.
+Independent CPU projection/attention checks use decoded operands and explicit
+rounding policies; these are synthetic component gates, not pretrained parity.
+
+CUPTI records one combined launch versus two separate launches, plus two for
+a two-forward negative control. Post-timing outputs remain bit-exact per path.
+Ordered and permuted node schedules produce identical projection/output hashes
+on all cases, with exact per-node visits, queue/epoch counts, split counts and
+parent-before-child timestamps. Source hashes are checked before and after the
+validation run so concurrent edits cannot silently relabel its tested revision.
+
+The default two-stage mode covers QKV projection followed by self-attention;
+the optional extension below adds O projection and its residual update. A full
+residual/norm/FFN transformer block, rotated prefix KV-cache generation and the
+action expert's prefix-cache binding remain incomplete.
+It does not establish a pretrained precision policy or end-to-end speedup.
+Most representative scheduled chains still regress their matched split baseline;
+shared-resource tuning and scheduling improvements remain open alongside model
+assembly. No M0–M9 milestone is completed by this integration.
+
+## Native output projection and attention residual
+
+The optional `output_projection` on `ResidentProjectionAttention` adds the
+native BF16 O projection to the same original VM launch. Its input is the
+attention output itself: setup binds the attention store pointer and row stride
+to the projection's padded resident A buffer. Logical values are produced by
+attention; K/row padding is initialized once at setup. There is no host copy,
+conversion kernel or extra launch between attention and O. QKV remains BF16 or
+FP8; this first O path is a BF16 reference/fallback, not a completed FP8 O tactic.
+
+Output-projection instructions depend on every required head/query tile and
+split partition for their 128-row band. This includes batches crossing a matrix
+tile boundary. In split attention, the final partition completion is published
+only after its last-producer merge, so O cannot read unfinished output. All
+writers perform the async-proxy fence before DAG release; O loads through TMA.
+The native dense epilogue applies optional bias/residual in FP32 and rounds to
+BF16 once. Both projection stages remain caller-owned and require ordered use.
+
+`validate_projection_attention.py --output-projection --profile` covers six
+attention sublayers with bias/residual, GQA, RoPE, masks, split-KV, padding and
+changed inputs. Attention's logical output/input region is poisoned before each
+call. QKV, intermediate attention and final O outputs match the corresponding
+separate native stages bit-for-bit on every case. Independent decoded-operand
+CPU checks cover the whole chain; maximum observed NRMSE is 0.006160 against
+the explicit 0.01 synthetic gate, not a pretrained/action-quality guarantee.
+
+CUPTI records one native launch versus three separate launches, with two for
+the two-forward negative control. Ordered/permuted schedules produce identical
+QKV/final hashes, and per-path outputs remain exact after timing. Both CUDA
+memcheck and synccheck pass all six sublayers plus the 12 dense projection
+cases with zero errors. Separate 100-CTA sublayer instances match their serial
+outputs with 200 CTAs submitted; no observed-active-overlap claim is made.
+The original two-stage mode and TCGen05 four-/sixteen-consumer-warp tests are
+also regression checked at their recorded revisions.
+
+This completes the tested projection/attention/O dataflow component, not a
+transformer layer or π0 model. Native normalization/FFN composition, rotated
+KV-cache generation and reuse, all model layers, denoising, checkpoint loading,
+calibration, pretrained fidelity and policy rollouts remain open. Scheduling
+still regresses matched split launches on most representative cases. The
+pipeline needs further integration and optimization; no M0–M9 acceptance or
+SOTA claim follows from these component results.
+
+Recorded synthetic event medians in microseconds (including host submission
+gaps; setup, transfers and independent references excluded):
+
+| Attention sublayer | One native launch | Three separate native launches |
+|---|---:|---:|
+| gqa-split | 340.13 | 191.23 |
+| vision | 340.35 | 133.82 |
+| prefix | 1099.07 | 493.70 |
+| prefix-bf16 | 489.07 | 504.88 |
+
+The `gqa-split` chain is self-attention over 51 rows; it does not include the
+expert prefix cache and must not be compared to the separate 819-key expert
+attention benchmark as if their workloads matched. The short BF16 prefix case
+is a component experiment, not evidence of an end-to-end model speedup.

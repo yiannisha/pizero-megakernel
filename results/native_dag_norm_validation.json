@@ -1,0 +1,75 @@
+{
+  "timestamp_utc": "2026-10-28T01:05:22.265859+00:00",
+  "scope": "Development normalization and dependent FFN stages; synthetic inputs only",
+  "failure_before_storage_fix": {
+    "case": "three-stage M3 after prefix M768",
+    "instruction": "UTMALDG.5D weight load",
+    "loader_threads": "128..159",
+    "cuda_error": 700,
+    "memcheck_errors": 47,
+    "reproduced_in_isolation": true,
+    "per_task_descriptor_acquire_also_failed": true
+  },
+  "fix": {
+    "source": "native_pi0/storage.py::packed_tma_buffer",
+    "guard_bytes": 127,
+    "reason": "Pinned TK TMA map rounds columns to swizzle width while retaining logical stride; final rounded sector must have backing storage. Extra FP4 groups have zero scales."
+  },
+  "after_fix": {
+    "full_memcheck_runs": [
+      {
+        "cases": 7,
+        "concurrent_control": true,
+        "errors": 0
+      },
+      {
+        "cases": 7,
+        "concurrent_control": true,
+        "errors": 0,
+        "explicit_guard_extent_and_zero_checks": true
+      }
+    ],
+    "full_synccheck": {
+      "cases": 7,
+      "concurrent_control": true,
+      "errors": 0,
+      "explicit_guard_checks": true,
+      "submission_event_gate": true
+    }
+  },
+  "other_checks": {
+    "full_synccheck_before_storage_change": {
+      "cases": 7,
+      "errors": 0
+    },
+    "quick_memcheck_before_storage_change": {
+      "cases": 4,
+      "errors": 0
+    },
+    "permuted_norm_rows_8_before_storage_change": "4 cases pass",
+    "norm_rows_1_before_storage_change": "4 cases pass",
+    "quantization_calibration_unit_tests": 9,
+    "packed_profile_with_storage_fix": {
+      "cases": 7,
+      "launches_per_forward": 1,
+      "active_node_overlap_ns": 154304,
+      "source_report": "results/native_dag_matmul.json"
+    },
+    "normalized_profile_with_storage_fix": {
+      "cases": 7,
+      "launches_per_forward": 1,
+      "active_node_overlap_ns": 250368,
+      "source_report": "results/native_dag_norm_ffn.json"
+    },
+    "concurrent_submission_gate": "Validation-only delayed CUDA event; excluded from forward, CUPTI scopes and latency measurements"
+  },
+  "source_sha256": {
+    "native_pi0/storage.py": "157c6368c2ee76396c3d8cad576c02a296cb7c976b6ee3441a5f356383fd29c4",
+    "native_pi0/primitives.py": "c0261732521af18534d701c0e4a58569835a8f55aeb47ec6dd4d686d5df76db3",
+    "native_pi0/normalization.py": "938cf8d0410e5261b4476aa952d9294dfb68493c9f6cbcad7f8664f97fde326c",
+    "native_pi0/dag_matmul.cu": "f5bc02e101705f8b64b4d54bd44686a95505415bad345feb0ee6272ab51907c7",
+    "native_pi0/dag_matmul.py": "b7e8c585a634d419803596e438fdf207069bc5d66479b8f27acad0f9a4e09b49",
+    "scripts/validate_dag_matmul.py": "8a47affcab6a5184bb712316521fad4742d247872ca80521aaf87aa083a5a515"
+  },
+  "source_hash_scope": "Current final worktree. Final profiles and post-fix synccheck use this validator. The two post-fix memcheck runs precede the validation-only submission gate; runtime and storage code are identical."
+}

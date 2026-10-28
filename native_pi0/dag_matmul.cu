@@ -1,6 +1,11 @@
 // Native matrix stages scheduled by the VM's dynamic ready queue.
 #include "nvfp4_probe.cu"
 #include "dag_probe.cu"
+#include "norm.cu"
+#ifndef NATIVE_DAG_NORM_ROWS
+#define NATIVE_DAG_NORM_ROWS 4
+#endif
+static_assert(NATIVE_DAG_NORM_ROWS==1||NATIVE_DAG_NORM_ROWS==4||NATIVE_DAG_NORM_ROWS==8);
 static_assert(Cfg::NUM_CONSUMER_WARPS==4);
 #ifndef NATIVE_DAG_PER_TASK_TENSORMAP_ACQUIRE
 #define NATIVE_DAG_PER_TASK_TENSORMAP_ACQUIRE 0
@@ -43,6 +48,7 @@ struct DagMatmulGlobals {
     RingTimings timings;
     native_pi0::DagScheduler queue;
     const Fp4Globals* stages;
+    const NormGlobals* normalization;
     unsigned* map_epochs;
     int stage_count;
     const int *node_stage,*node_task;
@@ -53,7 +59,7 @@ struct DagMatmulGlobals {
         if(kittens::laneid()==0){
             int node=queue.claim(false);instruction[0]=node<0?-1:1;
             if(node<0)exits[blockIdx.x]=index;
-            else {instruction[1]=node_stage[node];instruction[2]=node_task[node];instruction[3]=node;}
+            else {instruction[0]=node_stage[node]<0?2:1;instruction[1]=node_stage[node];instruction[2]=node_task[node];instruction[3]=node;}
         }
         __syncwarp();
     }
@@ -127,27 +133,59 @@ struct DagMatmulOp {
         sync();
     }};
 };
+struct DagNormOp {
+    static constexpr int opcode=2;
+    using controller=megakernel::NoOp<Cfg>::controller;
+    using loader=megakernel::NoOp<Cfg>::loader;
+    using launcher=megakernel::NoOp<Cfg>::launcher;
+    using storer=megakernel::NoOp<Cfg>::storer;
+    struct consumer {static __device__ void run(const DagMatmulGlobals& g,State& s){
+        int node=s.instruction()[3],first=s.instruction()[2]*NATIVE_DAG_NORM_ROWS;
+        if(threadIdx.x==0){
+            unsigned long long start;asm volatile("mov.u64 %0, %%globaltimer;":"=l"(start)::"memory");g.starts[node]=start;
+            auto previous=atomicExch(g.visits+node,static_cast<unsigned long long>(g.queue.epoch));
+            if(previous==g.queue.epoch)atomicAdd(&g.queue.control->errors,1u);
+        }
+        const NormGlobals norm=*g.normalization;
+        for(int row=first;row<min(first+NATIVE_DAG_NORM_ROWS,norm.rows);++row)NormOp::run_row(norm,s,row);
+        asm volatile("fence.proxy.async.global;":::"memory");DagMatmulOp::sync();
+        if(threadIdx.x==0){
+            g.values[node]=g.queue.epoch;g.owners[node]=blockIdx.x;g.ordinals[node]=s.instruction_index;
+            unsigned long long end;asm volatile("mov.u64 %0, %%globaltimer;":"=l"(end)::"memory");g.ends[node]=end;
+            g.queue.complete(node);
+        }
+        DagMatmulOp::sync();
+    }};
+};
 struct DagMatmulContext {
     DagProbeContext* queue;
     Fp4Globals* stages;
     int *node_stage,*node_task,device,workers;
     unsigned* map_epochs;
     std::vector<Fp4Globals> host_stages;
+    NormContext* normalization;
+    NormGlobals* norm_device;
 };
-extern "C" int create_dag_matmul(void** handle,void* queue_handle,int stage_count,void* const* stage_handles,
-    const int* node_stage,const int* node_task,const int* source_stage){
+int create_dag_matmul_impl(void** handle,void* queue_handle,int stage_count,void* const* stage_handles,
+    const int* node_stage,const int* node_task,const int* source_stage,NormContext* normalization){
     if(!handle)return cudaErrorInvalidValue;*handle=nullptr;
     if(!queue_handle||stage_count<1||!stage_handles||!node_stage||!node_task||!source_stage)return cudaErrorInvalidValue;
     auto& q=*static_cast<DagProbeContext*>(queue_handle);int device;auto error=cudaGetDevice(&device);
     if(error!=cudaSuccess)return error;
     if(device!=q.device)return cudaErrorInvalidDevice;
+    if(normalization && (normalization->device!=device||normalization->globals.format!=4))return cudaErrorInvalidValue;
     std::vector<Fp4Globals> stages;stages.reserve(stage_count);
     for(int i=0;i<stage_count;++i){
-        if(!stage_handles[i]||source_stage[i]<-1||source_stage[i]>=i)return cudaErrorInvalidValue;
+        if(!stage_handles[i]||source_stage[i]<-2||source_stage[i]>=i)return cudaErrorInvalidValue;
         auto& c=*static_cast<ResidentFp4*>(stage_handles[i]);
         if(c.device!=device)return cudaErrorInvalidDevice;
         auto f=c.globals;
-        if(source_stage[i]>=0){
+        if(source_stage[i]==-2){
+            if(!normalization)return cudaErrorInvalidValue;
+            const auto& norm=normalization->globals;
+            if(norm.width!=f.a.cols()*2||int64_t(f.a.rows())!=(int64_t(norm.rows)+127)/128*128)return cudaErrorInvalidValue;
+            f.a=PackedInput(reinterpret_cast<kittens::fp8e4m3*>(norm.output),nullptr,nullptr,f.a.rows(),f.a.cols());f.sfa=norm.scales;
+        }else if(source_stage[i]>=0){
             const auto& source=stages[source_stage[i]];
             int width=source.out.cols()/(source.output_gelu==2?2:1);
             if(!source.fp4_output||!source.output_scales||width!=f.a.cols()*2||source.out.rows()!=f.a.rows())return cudaErrorInvalidValue;
@@ -159,14 +197,22 @@ extern "C" int create_dag_matmul(void** handle,void* queue_handle,int stage_coun
     std::vector<std::vector<unsigned char>> assigned;
     for(const auto& stage:stages)assigned.emplace_back(size_t(stage.tasks),0);
     std::vector<int> seen(size_t(stage_count),0);
+    int norm_groups=normalization?(normalization->globals.rows+NATIVE_DAG_NORM_ROWS-1)/NATIVE_DAG_NORM_ROWS:0;
+    std::vector<unsigned char> norm_assigned(norm_groups,0);
     for(int node=0;node<q.globals.queue.nodes;++node){
         int i=node_stage[node],task=node_task[node];
+        if(i==-1){
+            if(!normalization||task<0||task>=norm_groups||norm_assigned[task])return cudaErrorInvalidValue;
+            norm_assigned[task]=1;continue;
+        }
         if(i<0||i>=stage_count||task<0||task>=stages[i].tasks)return cudaErrorInvalidValue;
         if(assigned[i][task])return cudaErrorInvalidValue;
         assigned[i][task]=1;
         seen[i]++;
     }
     for(int i=0;i<stage_count;++i)if(seen[i]!=stages[i].tasks)return cudaErrorInvalidValue;
+    if(normalization && std::count(norm_assigned.begin(),norm_assigned.end(),1)!=norm_groups)return cudaErrorInvalidValue;
+    NormGlobals* norm_device=nullptr;
     Fp4Globals* device_stages=nullptr;int *ns=nullptr,*nt=nullptr;unsigned* map_epochs=nullptr;size_t bytes=size_t(q.globals.queue.nodes)*4;
     error=cudaMalloc(&device_stages,size_t(stage_count)*sizeof(Fp4Globals));
     if(error==cudaSuccess)error=cudaMemcpy(device_stages,stages.data(),size_t(stage_count)*sizeof(Fp4Globals),cudaMemcpyHostToDevice);
@@ -174,16 +220,26 @@ extern "C" int create_dag_matmul(void** handle,void* queue_handle,int stage_coun
     if(error==cudaSuccess)error=cudaMalloc(&nt,bytes);
     if(error==cudaSuccess)error=cudaMemcpy(ns,node_stage,bytes,cudaMemcpyHostToDevice);
     if(error==cudaSuccess)error=cudaMemcpy(nt,node_task,bytes,cudaMemcpyHostToDevice);
+    if(normalization && error==cudaSuccess)error=cudaMalloc(&norm_device,sizeof(NormGlobals));
+    if(normalization && error==cudaSuccess)error=cudaMemcpy(norm_device,&normalization->globals,sizeof(NormGlobals),cudaMemcpyHostToDevice);
     size_t map_bytes=size_t(q.workers)*stage_count*sizeof(unsigned);
     if(error==cudaSuccess)error=cudaMalloc(&map_epochs,map_bytes);
     if(error==cudaSuccess)error=cudaMemset(map_epochs,0,map_bytes);
     if(error==cudaSuccess)error=cudaStreamSynchronize(nullptr);
-    auto kernel=megakernel::mk<Cfg,DagMatmulGlobals,DagMatmulOp>;
+    auto kernel=megakernel::mk<Cfg,DagMatmulGlobals,DagMatmulOp,DagNormOp>;
     if(error==cudaSuccess)error=cudaFuncSetAttribute(kernel,cudaFuncAttributeMaxDynamicSharedMemorySize,Cfg::DYNAMIC_SHARED_MEMORY);
-    if(error==cudaSuccess)*handle=new DagMatmulContext{&q,device_stages,ns,nt,device,q.workers,map_epochs,std::move(stages)};
-    else {cudaFree(device_stages);cudaFree(ns);cudaFree(nt);cudaFree(map_epochs);}
+    if(error==cudaSuccess)*handle=new DagMatmulContext{&q,device_stages,ns,nt,device,q.workers,map_epochs,std::move(stages),normalization,norm_device};
+    else {cudaFree(device_stages);cudaFree(ns);cudaFree(nt);cudaFree(map_epochs);cudaFree(norm_device);}
     return error;
 }
+extern "C" int create_dag_matmul(void** h,void* q,int count,void* const* stages,const int* ns,const int* nt,const int* sources){
+    return create_dag_matmul_impl(h,q,count,stages,ns,nt,sources,nullptr);
+}
+extern "C" int create_dag_norm_matmul(void** h,void* q,int count,void* const* stages,const int* ns,const int* nt,const int* sources,void* norm){
+    if(!norm)return cudaErrorInvalidValue;
+    return create_dag_matmul_impl(h,q,count,stages,ns,nt,sources,static_cast<NormContext*>(norm));
+}
+extern "C" int dag_norm_group_rows(){return NATIVE_DAG_NORM_ROWS;}
 extern "C" int launch_dag_matmul(void* handle,void* stream){
     if(!handle)return cudaErrorInvalidValue;auto& c=*static_cast<DagMatmulContext*>(handle);
     int device;auto error=cudaGetDevice(&device);
@@ -195,8 +251,8 @@ extern "C" int launch_dag_matmul(void* handle,void* stream){
     if(c.queue->epoch==UINT_MAX)return cudaErrorInvalidValue;
     auto queue=c.queue->globals.queue;queue.epoch=++c.queue->epoch;c.queue->globals.queue.epoch=queue.epoch;
     auto& q=c.queue->globals;
-    DagMatmulGlobals g{q.instructions,q.timings,queue,c.stages,c.map_epochs,int(c.host_stages.size()),c.node_stage,c.node_task,q.values,q.owners,q.ordinals,q.exits,q.visits,q.starts,q.ends};
-    auto kernel=megakernel::mk<Cfg,DagMatmulGlobals,DagMatmulOp>;
+    DagMatmulGlobals g{q.instructions,q.timings,queue,c.stages,c.norm_device,c.map_epochs,int(c.host_stages.size()),c.node_stage,c.node_task,q.values,q.owners,q.ordinals,q.exits,q.visits,q.starts,q.ends};
+    auto kernel=megakernel::mk<Cfg,DagMatmulGlobals,DagMatmulOp,DagNormOp>;
     kernel<<<c.workers,Cfg::NUM_THREADS,Cfg::DYNAMIC_SHARED_MEMORY,static_cast<cudaStream_t>(stream)>>>(g);
     return cudaGetLastError();
 }
@@ -204,7 +260,7 @@ extern "C" int destroy_dag_matmul(void* handle){
     if(!handle)return cudaSuccess;auto* c=static_cast<DagMatmulContext*>(handle);int device;auto error=cudaGetDevice(&device);
     if(error!=cudaSuccess)return error;
     if(device!=c->device)return cudaErrorInvalidDevice;
-    for(void* p:{static_cast<void*>(c->stages),static_cast<void*>(c->node_stage),static_cast<void*>(c->node_task),static_cast<void*>(c->map_epochs)}){
+    for(void* p:{static_cast<void*>(c->stages),static_cast<void*>(c->node_stage),static_cast<void*>(c->node_task),static_cast<void*>(c->map_epochs),static_cast<void*>(c->norm_device)}){
         auto e=cudaFree(p);if(error==cudaSuccess)error=e;
     }
     delete c;return error;
@@ -212,7 +268,7 @@ extern "C" int destroy_dag_matmul(void* handle){
 extern "C" int dag_matmul_resources(int* values,int count){
     if(!values||count<6)return cudaErrorInvalidValue;
     int device,blocks=0;cudaFuncAttributes attributes{};cudaDeviceProp properties{};
-    auto error=cudaGetDevice(&device);auto kernel=megakernel::mk<Cfg,DagMatmulGlobals,DagMatmulOp>;
+    auto error=cudaGetDevice(&device);auto kernel=megakernel::mk<Cfg,DagMatmulGlobals,DagMatmulOp,DagNormOp>;
     if(error==cudaSuccess)error=cudaGetDeviceProperties(&properties,device);
     if(error==cudaSuccess)error=cudaFuncSetAttribute(kernel,cudaFuncAttributeMaxDynamicSharedMemorySize,Cfg::DYNAMIC_SHARED_MEMORY);
     if(error==cudaSuccess)error=cudaFuncGetAttributes(&attributes,kernel);
@@ -225,6 +281,7 @@ extern "C" int dag_matmul_resources(int* values,int count){
 #ifdef NATIVE_DAG_MATMUL_VALIDATION
 extern "C" int validation_split_dag_matmul(void* handle,void* stream){
     if(!handle)return cudaErrorInvalidValue;auto& c=*static_cast<DagMatmulContext*>(handle);
+    if(c.normalization){int error=launch_norm(c.normalization,stream);if(error!=cudaSuccess)return error;}
     for(auto g:c.host_stages){
         g.task_from_instruction=false;
         auto kernel=megakernel::mk<Cfg,Fp4Globals,Fp4Matmul>;

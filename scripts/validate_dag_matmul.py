@@ -19,7 +19,8 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from native_pi0.primitives import ResidentNVFP4
 from native_pi0.dag_matmul import ResidentDagMatmul
-from native_pi0.quantization import PackedNVFP4,pack_nvfp4,interleave_gate_up,swizzle_scales
+from native_pi0.normalization import ResidentNorm
+from native_pi0.quantization import PackedNVFP4,pack_nvfp4,interleave_gate_up,swizzle_scales,unswizzle_scales
 from native_pi0.launch_trace import LaunchTrace
 
 
@@ -30,6 +31,20 @@ def physical(packed):
 def nrmse(actual,expected):
     d=actual.astype(np.float64)-expected.astype(np.float64)
     return float(np.linalg.norm(d)/max(np.linalg.norm(expected.astype(np.float64)),1e-30))
+
+
+def cpu_normalization(norm,kind):
+    dtype=norm.inputs.dtype
+    x=norm.inputs.float().cpu()
+    if norm.residual is not None:x=(x+norm.residual.float().cpu()).to(dtype).float()
+    x=x.numpy();mean=np.mean(x,axis=1,keepdims=True,dtype=np.float32) if kind=='layer' else np.float32(0)
+    centered=x-mean
+    y=centered/np.sqrt(np.mean(centered*centered,axis=1,keepdims=True,dtype=np.float32)+np.float32(1e-6))
+    if norm.gamma is not None:y*=norm.gamma.cpu().numpy()
+    if norm.beta is not None:y+=norm.beta.cpu().numpy()
+    if norm.inverse_scale is not None:y*=norm.inverse_scale.cpu().numpy()
+    y=torch.from_numpy(y).to(dtype).float().numpy()
+    return pack_nvfp4(y,global_scale=norm.global_scale,row_alignment=128,column_alignment=64)
 
 
 def check_diagnostics(graph):
@@ -44,6 +59,14 @@ def check_diagnostics(graph):
     return d
 
 
+def check_packed_storage(tensor):
+    assert tensor.dtype==torch.uint8 and tensor.is_contiguous()
+    end=tensor.storage_offset()+tensor.numel()
+    assert tensor.untyped_storage().nbytes()>=end+127
+    guard=tensor.as_strided((127,),(1,),end)
+    assert not torch.count_nonzero(guard).item(),'Packed TMA guard was overwritten'
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--profile',action='store_true')
@@ -56,6 +79,8 @@ def main():
     parser.add_argument('--uncoalesced-dependencies',action='store_true')
     parser.add_argument('--single-lane-bootstrap',action='store_true')
     parser.add_argument('--node-order',choices=('ordered','permuted'),default='ordered')
+    parser.add_argument('--normalized-input',action='store_true')
+    parser.add_argument('--norm-rows',type=int,choices=(1,4,8),default=4)
     parser.add_argument('--benchmark-output',type=Path)
     args=parser.parse_args()
     if args.benchmark_output and not args.profile:parser.error('Timing requires --profile launch gates')
@@ -70,6 +95,7 @@ def main():
             '-DNATIVE_DAG_CACHE_COMPUTE_METADATA='+str(int(not args.global_compute_metadata)),
             '-DNATIVE_DAG_COALESCE_DEPENDENCIES='+str(int(not args.uncoalesced_dependencies)),
             '-DNATIVE_DAG_WARP_BOOTSTRAP='+str(int(not args.single_lane_bootstrap)),
+            '-DNATIVE_DAG_NORM_ROWS='+str(args.norm_rows),
             '-DNATIVE_DAG_PER_TASK_TENSORMAP_ACQUIRE='+str(int(args.per_task_tensormap_acquire)),
             '--expt-relaxed-constexpr','--expt-extended-lambda','-I'+str(ROOT/'third_party/Megakernels/include'),
             '-I'+str(ROOT/'third_party/Megakernels/ThunderKittens/include'),'-I'+str(ROOT/'third_party/FlashRT/csrc'),
@@ -98,6 +124,16 @@ def main():
                 weights.append(pack_nvfp4(rng.normal(0,.05,size=(128,out_n)).astype(np.float32),global_scale=.25,row_alignment=128,column_alignment=64))
                 placeholders.append(pack_nvfp4(np.zeros((m,out_n),np.float32),global_scale=1.,row_alignment=128,column_alignment=64))
             with ExitStack() as stack:
+                norm=None;norm_kind='layer' if mode=='gelu' else 'rms'
+                if args.normalized_input:
+                    dtype=torch.float16 if mode=='gelu' else torch.bfloat16
+                    raw=torch.from_numpy(rng.normal(size=(m,k)).astype(np.float32)).to(dtype)
+                    residual=torch.from_numpy(rng.normal(0,.1,size=(m,k)).astype(np.float32)).to(dtype)
+                    gamma=1+rng.normal(0,.05,size=k).astype(np.float32)
+                    beta=rng.normal(0,.02,size=k).astype(np.float32) if norm_kind=='layer' else None
+                    norm=stack.enter_context(ResidentNorm(library,raw,kind=norm_kind,precision='fp4',gamma=gamma,beta=beta,
+                        residual=residual,inverse_scale=1+rng.random(k).astype(np.float32)*.1,global_scale=.125,
+                        row_alignment=128,workers=min(workers,m)))
                 stages=[]
                 for index,(activation,weight) in enumerate(zip(placeholders,weights)):
                     final=index==len(weights)-1
@@ -113,22 +149,43 @@ def main():
                         output_dtype=torch.bfloat16 if final else torch.uint8,output_global_scale=1. if final or index else gs,
                         output_gelu=regular,output_geglu=not final and index==0 and mode!='gelu',bias=bias,residual=residual)))
                 node_count=sum((s.a.shape[0]//128)*(s.b.shape[0]//128) for s in stages)
+                if norm is not None:node_count+=(m+args.norm_rows-1)//args.norm_rows
                 permutation=rng.permutation(node_count)  # Keep input RNG identical between order variants.
                 graph=stack.enter_context(ResidentDagMatmul(library,stages,workers=workers,
-                    node_order=permutation if args.node_order=='permuted' else None))
-                maximum=0.;last_diagnostic=None
+                    node_order=permutation if args.node_order=='permuted' else None,normalization=norm))
+                maximum=0.;whole_maximum=0.;norm_maximum=0.;last_diagnostic=None
                 for replay in range(3):
-                    current=pack_nvfp4(rng.normal(size=(m,k)).astype(np.float32),global_scale=.125,row_alignment=128,column_alignment=64)
+                    raw_input=rng.normal(size=(m,k)).astype(np.float32)
+                    current=pack_nvfp4(raw_input,global_scale=.125,row_alignment=128,column_alignment=64)
                     stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
                     with torch.cuda.stream(stream):
-                        stages[0].a.copy_(torch.from_numpy(current.data));stages[0].sa.copy_(torch.from_numpy(swizzle_scales(current.scales)))
+                        if norm is None:
+                            stages[0].a.copy_(torch.from_numpy(current.data));stages[0].sa.copy_(torch.from_numpy(swizzle_scales(current.scales)))
+                        else:
+                            norm.inputs.copy_(torch.from_numpy(raw_input).to(norm.inputs.dtype));norm.output[:m].fill_(255)
                         for stage in stages:
                             stage.output.fill_(0 if stage.output.dtype==torch.uint8 else float('nan'))
                             if stage.output_scales is not None:stage.output_scales.fill_(255)
                         graph.forward()
                     stream.synchronize();last_diagnostic=check_diagnostics(graph)
+                    for stage in stages:
+                        check_packed_storage(stage.a);check_packed_storage(stage.b)
+                        if stage.output.dtype==torch.uint8:check_packed_storage(stage.output)
+                    if norm is not None:check_packed_storage(norm.output)
                     snapshots=[s.output.clone() for s in stages];scale_snapshots=[None if s.output_scales is None else s.output_scales.clone() for s in stages]
                     reference_input=current
+                    whole_input=None
+                    if norm is not None:
+                        packed=norm.output.cpu().numpy().copy();sf=norm.output_scales.cpu().numpy().copy()
+                        residual_snapshot=norm.residual_output.clone()
+                        reference_input=PackedNVFP4(packed,unswizzle_scales(sf,packed.shape[0],k//16),norm.global_scale,(packed.shape[0],k))
+                        norm.forward();torch.cuda.synchronize()
+                        np.testing.assert_array_equal(packed,norm.output.cpu().numpy())
+                        np.testing.assert_array_equal(sf,norm.output_scales.cpu().numpy())
+                        torch.testing.assert_close(residual_snapshot,norm.residual_output,rtol=0,atol=0)
+                        whole_input=cpu_normalization(norm,norm_kind)
+                        norm_error=nrmse(physical(reference_input)[:m],physical(whole_input)[:m])
+                        norm_maximum=max(norm_maximum,norm_error);assert norm_error<=.005,norm_error
                     for index,(stage,weight) in enumerate(zip(stages,weights)):
                         # Independent CPU matmul gate, then pinned CUDA epilogue
                         # oracle driven by a separately launched FP32 projection.
@@ -139,6 +196,10 @@ def main():
                         for extra in (stage.residual,stage.bias):
                             if extra is not None:
                                 extra=extra.float().cpu().numpy();projection+=extra;cpu+=extra
+                        if whole_input is not None:
+                            whole_projection=physical(whole_input)@physical(weight).T
+                            for extra in (stage.residual,stage.bias):
+                                if extra is not None:whole_projection+=extra.float().cpu().numpy()
                         if stage.output.dtype==torch.uint8:
                             width=stage.output_width;packed=np.empty((projection.shape[0],width//2),np.uint8);sf=np.empty((projection.shape[0],width//16),np.uint8)
                             error=oracle(projection.ctypes.data,packed.ctypes.data,sf.ctypes.data,*projection.shape,float(stage.output_global_scale),2 if index==0 and mode!='gelu' else 1)
@@ -146,9 +207,18 @@ def main():
                             np.testing.assert_array_equal(snapshots[index].cpu().numpy(),packed)
                             np.testing.assert_array_equal(scale_snapshots[index].cpu().numpy(),swizzle_scales(sf))
                             reference_input=PackedNVFP4(packed,sf,stage.output_global_scale,(packed.shape[0],width))
+                            if whole_input is not None:
+                                whole_packed=np.empty_like(packed);whole_sf=np.empty_like(sf)
+                                error=oracle(whole_projection.ctypes.data,whole_packed.ctypes.data,whole_sf.ctypes.data,
+                                    *whole_projection.shape,float(stage.output_global_scale),2 if index==0 and mode!='gelu' else 1)
+                                assert error==0,error
+                                whole_input=PackedNVFP4(whole_packed,whole_sf,stage.output_global_scale,(whole_packed.shape[0],width))
                         else:
                             gold=torch.from_numpy(cpu).bfloat16().float().numpy();actual=snapshots[index].float().cpu().numpy()
                             error=nrmse(actual[:m],gold[:m]);maximum=max(maximum,error);assert error<=.005,error
+                            if whole_input is not None:
+                                whole_gold=torch.from_numpy(whole_projection).bfloat16().float().numpy()
+                                error=nrmse(actual[:m],whole_gold[:m]);whole_maximum=max(whole_maximum,error);assert error<=.005,error
                     error=split(graph.handle,torch.cuda.current_stream().cuda_stream);assert error==0,error;torch.cuda.synchronize()
                     for stage,expected,sf in zip(stages,snapshots,scale_snapshots):
                         torch.testing.assert_close(stage.output,expected,rtol=0,atol=0)
@@ -165,7 +235,11 @@ def main():
                         'output_sha256':[hashlib.sha256(s.contiguous().view(torch.uint8).cpu().numpy().tobytes()).hexdigest() for s in snapshots],
                         'scale_sha256':[None if s is None else hashlib.sha256(s.cpu().numpy().tobytes()).hexdigest() for s in scale_snapshots],
                         'diagnostics':'every node once; exact queue/epoch counts; ordered dependency timestamps',
+                        'packed_tma_guard_bytes':127,
                         'max_terminal_ordinal':int(last_diagnostic['exits'].max())}
+                if norm is not None:record.update(normalization=norm_kind,normalization_dtype=str(norm.inputs.dtype),
+                    norm_rows=args.norm_rows,norm_nrmse=norm_maximum,whole_chain_nrmse=whole_maximum,
+                    norm_vs_standalone='byte-exact data/scales/residual')
                 activity=[]
                 for index in range(len(stages)):
                     mask=graph.node_stage==index;owners=last_diagnostic['owners'][mask]
@@ -181,7 +255,7 @@ def main():
                     check_diagnostics(graph);record.update(cuda_launch_count=trace.count,kernel_symbol=trace.symbol)
                     with LaunchTrace(library) as trace:
                         error=split(graph.handle,torch.cuda.current_stream().cuda_stream);torch.cuda.synchronize()
-                    assert error==0 and trace.count==len(stages),(error,trace.count)
+                    assert error==0 and trace.count==len(stages)+int(norm is not None),(error,trace.count)
                     record['split_cuda_launch_count']=trace.count
                 if args.benchmark_output:
                     def split_forward():
@@ -203,7 +277,7 @@ def main():
                     for stage,expected in zip(stages,snapshots):torch.testing.assert_close(stage.output,expected,rtol=0,atol=0)
                     record['post_timing_outputs']='bit-exact'
                 records.append(record)
-                print(f'{mode} M{m} K{k} N{n}: {len(stages)} native stages, {node_count} nodes, producer bytes exact, final NRMSE={maximum:g}',flush=True)
+                print(f'{mode} M{m} K{k} N{n}: {len(stages)+int(norm is not None)} native stages, {node_count} nodes, producer bytes exact, final NRMSE={maximum:g}, whole={whole_maximum:g}',flush=True)
         # Real dependent matrix work, with more total CTAs than resident slots.
         with ExitStack() as stack:
             graphs=[]
@@ -213,14 +287,25 @@ def main():
                 b=pack_nvfp4(np.zeros((256,4096),np.float32));v=pack_nvfp4(rng.normal(0,.05,size=(1024,4096)).astype(np.float32))
                 gate=stack.enter_context(ResidentNVFP4(library,a,w,workers=100,output_dtype=torch.uint8,output_geglu=True))
                 down=stack.enter_context(ResidentNVFP4(library,b,v,workers=100,output_dtype=torch.bfloat16))
-                graphs.append(stack.enter_context(ResidentDagMatmul(library,[gate,down],workers=100)))
+                norm=None
+                if args.normalized_input:
+                    norm=stack.enter_context(ResidentNorm(library,torch.from_numpy(physical(a)).bfloat16(),row_alignment=128,workers=100))
+                graphs.append(stack.enter_context(ResidentDagMatmul(library,[gate,down],workers=100,normalization=norm)))
             gold=[]
             for graph in graphs:
                 assert split(graph.handle,torch.cuda.current_stream().cuda_stream)==0
                 gold.append(graph.output.clone())
             torch.cuda.synchronize();streams=[torch.cuda.Stream(),torch.cuda.Stream()]
+            # Queue both submissions before releasing them. Without this
+            # validation-only delay, Python submission latency can let the
+            # first short graph finish before the second reaches the GPU.
+            # This launch is outside forward, launch tracing and all timings.
+            gate_stream=torch.cuda.Stream();ready=torch.cuda.Event()
+            with torch.cuda.stream(gate_stream):
+                torch.cuda._sleep(10_000_000);ready.record()
             for graph,stream in zip(graphs,streams):
                 stream.wait_stream(torch.cuda.current_stream())
+                stream.wait_event(ready)
                 with torch.cuda.stream(stream):
                     graph.stages[0].output_scales.fill_(255);graph.forward()
             torch.cuda.synchronize();diagnostics=[]
@@ -237,7 +322,7 @@ def main():
                 concurrent['two_forward_negative_control']=trace.count
             print(f'Concurrent independent matrix graphs: exact outputs, active-node overlap {overlap} ns',flush=True)
     if args.benchmark_output:
-        sources=['native_pi0/dag_matmul.cu','native_pi0/dag_matmul.py','native_pi0/dag_scheduler.cuh','native_pi0/dag_probe.cu','native_pi0/dag_probe.py',
+        sources=['native_pi0/storage.py','native_pi0/norm.cu','native_pi0/normalization.py','native_pi0/dag_matmul.cu','native_pi0/dag_matmul.py','native_pi0/dag_scheduler.cuh','native_pi0/dag_probe.cu','native_pi0/dag_probe.py',
                  'native_pi0/nvfp4_probe.cu','native_pi0/tcgen_probe.cu','native_pi0/primitives.py','native_pi0/quantization.py',
                  'native_pi0/fp4_output_reference.cu','native_pi0/launch_trace.cpp','native_pi0/launch_trace.py','scripts/validate_dag_matmul.py',
                  'native_pi0/patches/megakernels-dynamic-instructions.patch','native_pi0/patches/megakernels-serial-barrier-init.patch',
@@ -250,9 +335,10 @@ def main():
                 'uncoalesced_dependencies':args.uncoalesced_dependencies,
                 'single_lane_bootstrap':args.single_lane_bootstrap,
                 'node_order':args.node_order,
+                'normalized_input':args.normalized_input,'norm_rows':args.norm_rows,
                 'nvcc':subprocess.check_output(['nvcc','--version'],text=True).strip(),
-                'scope':'Synthetic device-scheduled native matrix/FFN cores, not normalization, attention, pretrained or complete pi0 inference',
-                'timed_boundary':'Resident packed root input/weights to reused outputs; excludes setup/reference/transfers; events include host submission gaps',
+                'scope':'Synthetic device-scheduled native normalization/matrix/FFN cores; optional normalization; not attention, pretrained or complete pi0 inference',
+                'timed_boundary':('Resident normalization input/residual/affine parameters and packed weights to reused outputs' if args.normalized_input else 'Resident packed root input/weights to reused outputs')+'; excludes setup/reference/transfers; events include host submission gaps',
                 'resources':resources,'upstreams':json.loads((ROOT/'upstreams.json').read_text()),
                 'environment':{'gpu':torch.cuda.get_device_name(),'torch':torch.__version__,'cuda':torch.version.cuda},
                 'source_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in sources},'results':records,'concurrent':concurrent}

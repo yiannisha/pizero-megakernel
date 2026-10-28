@@ -59,6 +59,52 @@ the native invocation. Setup also applies `megakernels-dynamic-instructions.patc
 static VM programs retain their original fetch path. Connecting native model
 operators to this scheduler remains in progress.
 
+`python scripts/validate_dag_matmul.py --profile --benchmark-output results/native_dag_matmul.json`
+checks dependent native matrix stages through that scheduler. Cases include
+compact GeGLU/down FFN cores at expert and prefix sizes, a padded vision GELU
+FFN core, bias/residual fusion, and a three-stage chain. `--node-order permuted`
+stress-tests task indexing; timing defaults to regular stage/tile order.
+The development `ResidentDagMatmul` wrapper binds resident FP4 stage outputs
+directly to their consumers. Add `--normalized-input` to begin with resident
+BF16/FP16 inputs and native residual + RMSNorm/LayerNorm → FP4, followed by
+the dependent FFN stages in the same launch. `--norm-rows 1`, `4`, or `8`
+selects rows per normalization task. The optional `ResidentNorm` is caller-owned
+and must outlive `ResidentDagMatmul`. Attention and full model execution remain
+incomplete. Current scheduling remains slower than the matched split-launch
+baseline; `results/native_dag_norm_ffn.json` records the normalized cases.
+
+`python scripts/validate_attention.py --profile --report results/native_attention.json`
+checks the FlashRT-derived native attention operator. `ResidentAttention` reads
+BF16/FP16 projection views and supports head dimensions 64, 72 and 256, GQA,
+bias, rotate-half RoPE, rectangular queries, boolean masks and the π0 suffix
+state/action visibility rule. Shared tiles use VM pages and consumer barriers;
+the operator uses the original VM's static instruction schedule. The validator
+compares against independent CPU FP32 math and actual pinned FlashRT kernels
+where their shapes apply. `--disable-fma` checks bit-exact source parity without
+FP32 FMA contraction; the normal build requires at most one output ULP and
+source NRMSE ≤ 0.0001. This operator is not yet connected to native projections
+or KV-cache generation, and does not constitute a transformer layer.
+`--kv-splits 8` enables native split-KV with FP32 partials and a last-producer
+merge in the same launch. The corresponding resident argument is `splits=8`.
+The measured 51-query BF16 expert benefits; already-parallel vision/prefix
+cases retain `splits=1`. Split instances use scalar epochs and reject CUDA
+graph capture. `--cached-merge` retains an experimental coefficient cache
+that regresses the measured cases and is disabled by default.
+
+`python scripts/validate_projection_attention.py --profile --report results/native_projection_attention.json`
+checks BF16/FP8 QKV projection → BF16 self-attention in one native launch.
+`ResidentDense` provides FP32/BF16 output with bias/residual fusion;
+`ResidentProjectionAttention` schedules its QKV row bands and dependent
+attention tiles, including GQA, masks, RoPE and split-KV. `--node-order permuted`
+stress-tests task mapping. The chain matches separate native stages on the
+tested shapes, but most representative cases remain slower than split launches.
+Add `--output-projection` to include a BF16 O projection with bias/residual in
+the same launch. Pass its caller-owned `ResidentDense` as `output_projection`
+to the wrapper; both projections must outlive it. Attention writes directly
+into that projection's padded input, without a conversion/copy kernel. The
+result has the dense logical shape `[batch * rows, output_width]`.
+Rotated KV-cache generation and complete transformer blocks remain incomplete.
+
 BF16 latency baselines for the full π0 model (SigLIP vision tower, Gemma 2B
 prefix, Gemma 300M action expert, ten Euler denoising steps):
 
