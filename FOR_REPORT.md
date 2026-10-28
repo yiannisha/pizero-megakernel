@@ -39,9 +39,33 @@ GPU timings are medians of five CUDA-event samples after warmup, with no other c
 | One native megakernel | 169.54 ms | 4.21× slower |
 | Three native megakernels | 169.03 ms | 4.20× slower |
 
-The 0.51 ms difference between one and three native launches is small compared with their roughly 129 ms gap to the CUDA graph. Before the two later component changes, the three-launch path took 174.01 ms; separating the earlier 174.45 ms single kernel had likewise changed little. The optimized fusions reduced some work, but launch count is not the dominant cost.
+The 0.51 ms difference between one and three native launches is small compared with their roughly 129 ms gap to the CUDA graph. Launch count is not the dominant cost in this implementation.
 
-The earlier combined fusion pass reduced the single native forward from about 194.1 to 174.4 ms. Same-input ablations measured 176.3 ms without fused vision GELU, 181.9 ms without the 64-row expert GEMMs, and 181.3 ms without fused QKV/RoPE/cache production, versus 174.4 ms with all three enabled. These changes helped individually; none removed the gap to the graph baseline.
+## What we tried and what it gained
+
+The following are **GPU CUDA-event medians**, with lower values better. A positive gain is a reduction in latency; a negative gain is a regression. The reference for each row is shown explicitly because the trials were made at different stages of development. The initial, intermediate, and final builds use the same workload and seed but were not all measured in one simultaneous A/B run, so their differences should be read as observed changes rather than isolated causal effects.
+
+| Trial | Comparison | Measured latency | Observed gain |
+|---|---|---:|---:|
+| Later fusion bundle (RMS factor folding, vision GELU epilogue, QKV/RoPE/cache epilogue, 64-row expert GEMMs, fused action SiLU and final Euler projection) | Earlier native single kernel, 194.02 ms → fused single kernel | 174.45 ms | **19.57 ms (10.1%)** |
+| Split the earlier fused program into vision, prefix, and expert launches | Earlier fused single kernel, 174.45 ms → three kernels | 174.01 ms | **0.44 ms (0.3%)** |
+| One-pass attention in the earlier prefix layers | Three-kernel total, 174.01 ms → prefix variant | 170.93 ms | **3.08 ms (1.8% total)**; prefix phase saves 3.42 ms (15.7%) |
+| Vision patch conversion and tensor-core projection, plus position/bias addition | Prefix variant, 170.93 ms → patch variant | 169.03 ms | **1.90 ms (1.1% total)**; vision phase saves 2.44 ms (19.6%) |
+| Combined later component changes | Earlier three-kernel total, 174.01 ms → final three-kernel total | 169.03 ms | **4.98 ms (2.9%)** |
+| Use one launch instead of three for the final operators | Final three-kernel total, 169.03 ms → final one-kernel total | 169.54 ms | **−0.51 ms** |
+| Four-way split-K for expert FFN-down projection | Earlier three-kernel total, 174.01 ms → split-K variant | 183.36 ms | **−9.35 ms (5.4% slower)** |
+
+The first row is a *bundle* of later changes: gate/up + GeGLU, residual epilogues, and action-input/time composition were already present in its 194.02 ms baseline. It does not measure a separate contribution for every fusion listed above. The prefix and patch rows follow the actual sequence of measured variants. Component phases are isolated launches in separate samples, so their medians need not add to the end-to-end median; across the earlier and final three-kernel builds, the expert phase changed from 139.44 to 140.73 ms. The split-K variant preserved similar output error but was slower, so it was archived.
+
+Three same-run, same-input **leave-one-out ablations** isolate the effect of particular choices within an earlier 174.35 ms fused single-kernel build:
+
+| Omitted optimization | Latency with it omitted | Gain from keeping it |
+|---|---:|---:|
+| Vision FFN-up bias + GELU epilogue | 176.25 ms | **1.90 ms (1.1%)** |
+| 64-row expert GEMM path for 51 query rows | 181.86 ms | **7.51 ms (4.1%)** |
+| QKV projection + RoPE + direct K/V cache production | 181.29 ms | **6.93 ms (3.8%)** |
+
+These ablation gains overlap and cannot be summed to estimate the bundle's gain. No separate latency ablation is available for each remaining fusion.
 
 | Three-launch component, optimized path | GPU median | Fraction of native total |
 |---|---:|---:|
@@ -49,11 +73,11 @@ The earlier combined fusion pass reduced the single native forward from about 19
 | Prefix and cache construction | 18.44 ms | 10.9% |
 | Ten-step action expert | 140.73 ms | 83.3% |
 
-Component times are measured as isolated native launches after buffers and caches are populated. Their sum can differ slightly from the complete forward because the timings were collected as separate samples. The vision patch change reduced vision from 12.89 to about 10.02 ms; one-pass prefix attention reduced prefix from 21.81 to about 18.44 ms. A four-way split-K experiment on the expert down projection preserved similar output error but *increased* the three-launch total to 183.36 ms, so it was archived rather than enabled.
+Component times are measured as isolated native launches after buffers and caches are populated. Their sum can differ slightly from the complete forward because the timings were collected as separate samples.
 
-## What the device profile shows
+## Why the megakernels are slower on B200
 
-A timing-enabled build recorded the resident VM's consumer instruction timestamps, and CUDA events measured each component. Instrumentation increased the expert's measured phase time to 152.04 ms; the uninstrumented 140.73 ms above is the performance result. The timestamps include dependency waits, so they identify long resident instruction intervals but are not pure arithmetic times. Active CTA counts come directly from the static instruction streams.
+A timing-enabled build recorded the resident VM's consumer instruction timestamps, and CUDA events measured each component. Instrumentation increased the expert's measured phase time to 152.04 ms; the uninstrumented 140.73 ms above is the performance result. The timestamps include dependency waits, so they identify long resident instruction intervals but are not pure arithmetic times. Active CTA counts come directly from the static instruction streams; they describe *available scheduled parallelism*, not a hardware-counter measurement of achieved occupancy.
 
 | Median active CTAs per layer | Vision, 27 layers | Prefix, 17–18 layers | Expert, 180 layers |
 |---|---:|---:|---:|
@@ -63,11 +87,23 @@ A timing-enabled build recorded the resident VM's consumer instruction timestamp
 | Gate/up or FFN-up | 148 | 148 | **64** |
 | FFN-down | 54 | 96 | **8** |
 
-Each expert layer has only 51 query rows. The native 64×128 tensor-core tiles give its attention, output projection, and down projection eight independent CTA assignments while the GPU has 148 SMs. The expert attention scans the key sequence twice to preserve BF16 rounding. These low-parallelism, dependent stages repeat for 18 layers across ten denoising steps. Vision and prefix expose more parallelism, but 54-CTA vision output/down projections and 96-CTA prefix projections still leave many SMs without work at those stages. The split-K down-projection regression is evidence that merely adding CTAs to one short stage does not repair the overall schedule.
+### Small action matrices expose too few independent CTAs
 
-The measured parameter storage is approximately 827 MB for vision, 5,017 MB for the prefix language model, and 623 MB for the expert, versus 126 MB of B200 L2. Thus, the explanation is **not** that the entire model fits in cache or that weight traffic is negligible. The three regions use different weights, and the expert's weights exceed L2; placing them in one kernel does not keep all weights on chip across layers or denoising steps. Fusion can remove some activation traffic and launch boundaries, but this implementation pays much larger costs from insufficient tile parallelism and repeated synchronization along the dependency chain. CUDA graph replay already removes the CPU's per-operator dispatch overhead while allowing each operator to use its own grid and tile shape.
+The action expert processes a 50-action chunk plus one state token: only **51 query rows** per denoising step. For the native schedule, one QKV projection exposes 20 CTA assignments, gate/up 64, and attention, output projection, and FFN-down only **8 each**. Eight assignments are at most eight simultaneously working CTAs *for that stage* on a 148-SM GPU; each assignment can loop over multiple tiles but cannot turn that stage into 148 independent CTAs. Other stages may overlap through row-band pipelining, so this is a bound on stage parallelism rather than an exact count of idle SMs. Attention is divided across eight query heads, while the narrow output/down projection grids have few output tiles. The 64-row GEMM path avoids padded work and saves 7.51 ms in the earlier ablation, yet still leaves the small-output stages with limited grid parallelism. Vision and prefix expose more work, though their 54-CTA and 96-CTA stages also fall short of 148 assignments.
 
-No DRAM throughput or tensor-core utilization percentage was measured: Nsight Compute returned `ERR_NVGPUCTRPERM` for this device. The profile therefore supports the scheduling and occupancy explanation directly, while the claim that a specific stage saturates or does not saturate memory bandwidth remains unverified. It is reasonable to expect limited *cross-operator memory-traffic savings* from a whole-model megakernel here; it is not reasonable to infer that π0 has no memory-sensitive operators.
+This is a **shape problem**, not a statement that the whole network is small. The expert contains 18 transformer layers repeated across ten Euler steps, giving **180 dependent layer executions**. Each layer needs its projection outputs before attention, attention before its output projection, and the residual before the FFN. The native VM uses row-band producer counters to preserve these dependencies; consumers wait for required counters, then publish completion after the output is visible. Because the next operation depends on the preceding one, the GPU cannot simply combine the spare CTAs from adjacent stages into parallel work. The two-pass expert attention also reads the key sequence twice to match the BF16 reference behavior. Its median recorded consumer interval was about 1.22 million cycles, versus about 0.085 million for expert QKV, but these intervals include waits and must not be read as pure kernel arithmetic times.
+
+### Fusion saves less than the schedule costs
+
+One persistent Hazy VM launch removes many host-visible launches and lets the fused epilogues avoid intermediate activation reads/writes. The measurements show that those gains are real: the later fusion bundle saved 19.57 ms, and removing QKV/RoPE/cache fusion alone cost 6.93 ms in the earlier ablation. Yet the final one- and three-launch paths differ by only 0.51 ms. A CUDA graph already replays the operator sequence without paying Python dispatch at every operator, while its individual kernels can select their own grids, tile sizes, and specialization for the 768-row vision path, prefix path, and 51-row expert path. The native launch keeps 148 worker CTAs resident and executes **62,072 nonempty range instructions** over **1,627 stages**; each range follows the static stream and uses dependency counters when its inputs are needed. This machinery enables a correct single launch but does not change the serial mathematical order of the 180 expert layers. The measured 140.73 ms expert phase accounts for **83.3%** of native end-to-end latency and dominates the 4.2× gap to the same-weight graph.
+
+Adding more output tiles is not automatically a win. Four-way split-K on expert FFN-down increased the earlier three-launch total by 9.35 ms. Splitting K creates partial results and additional reduction/synchronization work, so extra parallelism must outweigh that overhead in each short layer. This experiment rules out that particular split-K schedule as a solution; it does not rule out different operator-specific schedules.
+
+### Large weights limit whole-model reuse
+
+Measured parameter storage is approximately **827 MB** for vision, **5,017 MB** for the prefix language model, and **623 MB** for the expert, versus **126 MB** of B200 L2. Even the expert weights alone exceed L2. A single launch cannot keep all component weights on chip across the full sequence, and fusing adjacent layers mostly joins operations with *different* weight matrices. The ten expert steps can reuse the same weight set, but its size prevents assuming that L2 retains it all between steps. For a 51-row BF16 projection, the idealized per-invocation arithmetic from a `M×K` by `K×N` multiply is `2MKN` FLOPs for `2KN` weight bytes, or roughly **51 FLOPs per weight byte** at `M=51`, even if each weight is fetched only once for that invocation. Actual traffic, cache hits across steps, and tile-level rereads require measurement. The practical memory benefit of this megakernel is therefore concentrated in intermediate activations and launch overhead, not in making the multi-gigabyte weight set resident in cache. The model is small in **query-row count** at the expert, which hurts parallelism; it is large in **weight footprint**, which still makes memory traffic relevant.
+
+These are bounds and measured schedule facts, not a full roofline analysis. Nsight Compute returned `ERR_NVGPUCTRPERM`, so DRAM bytes, achieved bandwidth, tensor-core utilization, and achieved SM occupancy were unavailable. The profile directly supports the low-parallelism and long-dependency-chain explanation. It does **not** establish that bandwidth is unsaturated, that all weights are reread from DRAM every step, or that each long consumer interval is compute time. The 40.25 ms graph result shows that this workload can run much faster on the same B200 with the same weights and inputs; attributing the entire gap to one hardware bottleneck would require hardware counters or additional controlled kernel-level experiments.
 
 ## Conclusion and evidence
 
@@ -75,6 +111,8 @@ For this B200 workload, the current one- and three-launch native megakernels hav
 
 - [Matched one-launch and CUDA-graph benchmark](results/native_pi0_report_single_b200.json)
 - [Matched three-launch benchmark with component times](results/native_pi0_report_three_b200.json)
+- [Earlier native baseline](results/native_pi0_matched_baselines.json), [fused variant and same-run ablations](results/native_pi0_realtime_variants.json)
+- [Prefix attention variant](results/native_pi0_prefix_flash_b200.json), [vision patch variant](results/native_pi0_vision_patch_b200.json)
 - [Resident VM instruction profile and parameter sizes](results/native_pi0_component_vm_profile_b200.json)
 - [Initial three-launch and split-K ablation](results/native_pi0_partitioned_b200.json), [split-K result](results/native_pi0_partitioned_splitk4_b200.json)
 - [Native model construction](native_pi0/model.py), [VM operators and launch](native_pi0/model.cu), [static range scheduler](native_pi0/program.py)
