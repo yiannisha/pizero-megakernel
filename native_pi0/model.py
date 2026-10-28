@@ -3,6 +3,7 @@ import ctypes as C
 from contextlib import ExitStack
 import math
 from pathlib import Path
+from types import SimpleNamespace
 import subprocess
 import sys
 
@@ -198,14 +199,22 @@ class NativePi0:
         self.norm(x,pg.paligemma.language_model.norm,rms=True)
         state=self.linear32(None,self.model.state_proj,1,slot=2)
         actions=None;suffix_rows=self.chunk_size+1;suffix_rope=self.rope(suffix_rows,prefix_rows,256)
+        # Immutable action half of the first time MLP: W_a(W_in noise + b_in)
+        # becomes (W_a W_in) noise + W_a b_in. The time half is a per-step bias.
+        first=self.model.action_time_mlp_in;action_in=self.model.action_in_proj
+        half=action_in.out_features
+        fused_weight=first.weight[:,:half].float()@action_in.weight.float()
+        action_bias=first.weight[:,:half].float()@action_in.bias.float()
+        self.buffers.extend((fused_weight,action_bias))
         time=np.float32(1.);dt=np.float32(-1./self.flow_steps)
         for step in range(self.flow_steps):
-            action=self.linear32(actions,self.model.action_in_proj,self.chunk_size,slot=3 if step==0 else 0)
             fraction=torch.linspace(0.,1.,512,device=self.device,dtype=torch.float64)
             period=.004*(4./.004)**fraction;angle=float(time)/period*(2.*math.pi)
             time_embedding=torch.cat((angle.sin(),angle.cos())).float();self.buffers.append(time_embedding)
-            y=self.scalar(7,(self.chunk_size,2048),a=action,b=time_embedding,dtype=torch.float32,p0=1024)
-            y=self.linear32(y,self.model.action_time_mlp_in,self.chunk_size)
+            step_bias=action_bias+(first.weight[:,half:].float()@time_embedding)+first.bias.float()
+            self.buffers.append(step_bias)
+            folded=SimpleNamespace(weight=fused_weight,bias=step_bias)
+            y=self.linear32(actions,folded,self.chunk_size,slot=3 if step==0 else 0)
             y=self.scalar(4,y.shape,a=y,dtype=torch.float32)
             y=self.linear32(y,self.model.action_time_mlp_out,self.chunk_size)
             x=self.scalar(8,(padded(suffix_rows,128),1024),a=state,b=y,p0=self.chunk_size)

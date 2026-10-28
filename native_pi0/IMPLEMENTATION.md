@@ -137,3 +137,21 @@ Compute Sanitizer memcheck and synccheck with zero reported errors. These
 runs still exit nonzero on the independent action accuracy gate (2.03% NRMSE);
 CUPTI tracing is disabled under the sanitizers because their CUDA subscribers
 conflict. The separate full-shape run confirms one VM launch.
+
+### Offline action/time projection fold
+
+The native model setup now composes the π0 action input projection with the
+action half of `action_time_mlp_in`: `W_a @ W_in` is packed once as a 32→1024
+weight. The time half, both biases and the timestep embedding become a
+step-specific resident FP32 bias. Forward executes one smaller native linear
+operator followed by the existing SiLU and `action_time_mlp_out`, removing
+three operations per Euler step from the instruction program. No Torch model
+operator runs in forward. This transfers realtime-vla's algebraic fold while
+retaining the actual OpenPI π0 FP32 head precision.
+
+A direct FP32 comparison of the folded and separate expressions measured
+3.57e-7 NRMSE. The complete same-weight run in
+`results/native_pi0_action_time_fold.json` has 80,852 range instructions and
+215.5 ms isolated native median versus 245.2 ms eager OpenPI. Action NRMSE is
+0.03456; the full-model accuracy gate remains open. The reference replay and
+single-launch checks passed in that run.
