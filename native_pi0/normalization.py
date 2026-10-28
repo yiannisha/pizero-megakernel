@@ -3,6 +3,7 @@ import ctypes
 
 import numpy as np
 import torch
+from native_pi0.storage import packed_tma_buffer
 
 
 class ResidentNorm:
@@ -20,9 +21,11 @@ class ResidentNorm:
         rows,width=inputs.shape
         if rows<1 or width<16 or width>2048 or width%16:
             raise ValueError("Width must be a multiple of 16 up to 2048")
-        if kind not in ("rms","layer") or precision not in ("fp4","fp8"):
+        if kind not in ("rms","layer") or precision not in ("fp4","fp8","bf16"):
             raise ValueError("Unknown normalization or precision")
         if not isinstance(row_alignment,int) or row_alignment<1:raise ValueError("Invalid row alignment")
+        if precision=="bf16" and (inputs.dtype!=torch.bfloat16 or global_scale!=1.):
+            raise ValueError("BF16 normalization requires BF16 input and unit global scale")
         self.logical_rows=rows
         self.workers=workers
         output_rows=(rows+row_alignment-1)//row_alignment*row_alignment
@@ -48,14 +51,14 @@ class ResidentNorm:
                 if vector is not None and tuple(vector.shape)!=(width,):raise ValueError("Affine/AWQ vector shape mismatch")
             self.residual_output=None if residual is None else torch.empty_like(self.inputs)
             allocate=torch.zeros if output_rows!=rows else torch.empty
-            self.output=allocate((output_rows,width//2 if precision=="fp4" else width),device=self.device,
-                                 dtype=torch.uint8 if precision=="fp4" else torch.float8_e4m3fn)
-            self.output_scales=None if precision=="fp8" else torch.zeros(((output_rows+127)//128)*((width//16+3)//4)*512,
+            self.output=(packed_tma_buffer((output_rows,width//2),device=self.device) if precision=="fp4" else
+                         allocate((output_rows,width),device=self.device,dtype=torch.float8_e4m3fn if precision=="fp8" else torch.bfloat16))
+            self.output_scales=None if precision!="fp4" else torch.zeros(((output_rows+127)//128)*((width//16+3)//4)*512,
                                                                         dtype=torch.uint8,device=self.device)
             def pointer(t):return None if t is None else t.data_ptr()
             error=self.create(ctypes.byref(self.handle),*[pointer(t) for t in (self.inputs,self.residual,self.gamma,self.beta,self.inverse_scale,
                                                                                  self.residual_output,self.output,self.output_scales)],
-                              rows,width,workers,int(inputs.dtype==torch.float16),4 if precision=="fp4" else 8,int(kind=="layer"),
+                              rows,width,workers,int(inputs.dtype==torch.float16),4 if precision=="fp4" else 8 if precision=="fp8" else 16,int(kind=="layer"),
                               int(round_normalized),int(round_residual),int(legacy_ties),float(epsilon),float(self.global_scale))
         if error:raise RuntimeError(f"Native norm setup CUDA error {error}")
 

@@ -199,7 +199,10 @@ struct Fp4Matmul {
                             size_t index=size_t(r)*n+c;
                             if(g.residual){lo.x+=float(g.residual[index]);lo.y+=float(g.residual[index+1]);hi.x+=float(g.residual[index+8]);hi.y+=float(g.residual[index+9]);}
                             if(g.bias){lo.x+=float(g.bias[c]);lo.y+=float(g.bias[c+1]);hi.x+=float(g.bias[c+8]);hi.y+=float(g.bias[c+9]);}
-                            if(g.output_gelu){lo.x=gelu(lo.x);lo.y=gelu(lo.y);hi.x=gelu(hi.x);hi.y=gelu(hi.y);}
+                            if(g.output_gelu==3){
+                                lo.x=fmaxf(lo.x,0.f);lo.y=fmaxf(lo.y,0.f);hi.x=fmaxf(hi.x,0.f);hi.y=fmaxf(hi.y,0.f);
+                                lo.x*=lo.x;lo.y*=lo.y;hi.x*=hi.x;hi.y*=hi.y;
+                            }else if(g.output_gelu==1){lo.x=gelu(lo.x);lo.y=gelu(lo.y);hi.x=gelu(hi.x);hi.y=gelu(hi.y);}
                             lo.x*=inv_global;lo.y*=inv_global;hi.x*=inv_global;hi.y*=inv_global;
                             float maximum=fmaxf(fmaxf(fabsf(lo.x),fabsf(lo.y)),fmaxf(fabsf(hi.x),fabsf(hi.y)));
                             maximum=fmaxf(maximum,__shfl_xor_sync(0xffffffff,maximum,1));
@@ -354,7 +357,7 @@ extern "C" int configure_resident_fp4_bf16(void* handle,const void* bias,const v
     return cudaSuccess;
 }
 extern "C" int configure_resident_fp4_quantized(void* handle,const void* bias,const void* residual,void* output,void* scales,float global_scale,int gelu){
-    if(!handle||!output||!scales||!isfinite(global_scale)||global_scale<=0||gelu<0||gelu>2)return cudaErrorInvalidValue;
+    if(!handle||!output||!scales||!isfinite(global_scale)||global_scale<=0||gelu<0||gelu>3)return cudaErrorInvalidValue;
     if(gelu==2&&(bias||residual))return cudaErrorInvalidValue;
     auto& g=static_cast<ResidentFp4*>(handle)->globals;
     g.bias=static_cast<const kittens::bf16*>(bias);g.residual=static_cast<const kittens::bf16*>(residual);

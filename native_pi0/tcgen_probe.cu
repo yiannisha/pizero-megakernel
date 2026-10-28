@@ -24,15 +24,24 @@ template<class Element> struct Globals {
     Output out;
     float alpha;
     int workers,tasks,m_tiles,n_tiles;
+    kittens::bf16* bf16_output=nullptr;
+    const kittens::bf16 *bias=nullptr,*residual=nullptr;
+    int activation=0; // 0: identity; 1: ReLU²
+    bool task_from_instruction=false;
+    int round_before_residual=0;
+
 };
 using State = megakernel::state<Cfg>;
 template<class Element> struct Matmul {
     using G = Globals<Element>;
     using Tile = typename G::Tile;
     static constexpr int opcode=1;
-    static __device__ int task(const G& g,State& s){return s.instruction_index*g.workers+blockIdx.x;}
-    static __device__ int row(const G& g,State& s){return (task(g,s)/g.n_tiles)%g.m_tiles;}
-    static __device__ int col(const G& g,State& s){return task(g,s)%g.n_tiles;}
+    template<class View> static __device__ int task(const View& g,State& s){
+        if constexpr(requires{g.fixed_task;})return g.fixed_task;
+        else return g.task_from_instruction?s.instruction()[2]:s.instruction_index*g.workers+blockIdx.x;
+    }
+    template<class View> static __device__ int row(const View& g,State& s){return (task(g,s)/g.n_tiles)%g.m_tiles;}
+    template<class View> static __device__ int col(const View& g,State& s){return task(g,s)%g.n_tiles;}
     static __device__ Tile& tile(State& s,int i) { return *reinterpret_cast<Tile*>(s.pages[s.pid(i)].ptr()); }
     struct controller {
         static __device__ int release_lid(const G&,Cfg::instruction_t&,int& q){return q;}
@@ -41,7 +50,7 @@ template<class Element> struct Matmul {
             return 5;
         }
     };
-    struct loader { static __device__ void run(const G& g,State& s){
+    struct loader { template<class View> static __device__ void run(const View& g,State& s){
         if(task(g,s)>=g.tasks){megakernel::NoOp<Cfg>::loader::run(g,s);return;}
         int lane=kittens::laneid();
         int iterations=g.a.cols()/64,used=2*min(iterations,2);
@@ -57,7 +66,7 @@ template<class Element> struct Matmul {
             }
         }
     }};
-    struct launcher { static __device__ void run(const G& g,State& s){
+    struct launcher { template<class View> static __device__ void run(const View& g,State& s){
         if(task(g,s)>=g.tasks){megakernel::NoOp<Cfg>::launcher::run(g,s);return;}
         if(kittens::laneid()==0){
             s.wait_tensor_ready();
@@ -74,7 +83,7 @@ template<class Element> struct Matmul {
             for(int i=0;i<2*min(iterations,2);i++)s.finish_page(s.pid(i),Cfg::NUM_CONSUMER_WARPS);
         }
     }};
-    struct consumer { static __device__ void run(const G& g,State& s){
+    struct consumer { template<class View> static __device__ void run(const View& g,State& s){
         if(task(g,s)>=g.tasks)return;
         kittens::wait(s.semaphores()[4],0);
         if(kittens::warpid()<4){
@@ -83,7 +92,32 @@ template<class Element> struct Matmul {
             kittens::warpgroup::load_async(values,acc);
             kittens::tensor_load_wait();
             kittens::warp::mul(values,values,g.alpha);
-            kittens::warpgroup::store(g.out,values,{task(g,s)/g.n_tiles,col(g,s)});
+            if(g.bf16_output){
+                int lane=kittens::laneid(),warp=kittens::warpid();
+                int row_base=(task(g,s)/g.n_tiles)*128,col_base=col(g,s)*128,n=g.out.cols();
+                #pragma unroll
+                for(int i=0;i<values.height;i++){
+                    #pragma unroll
+                    for(int j=0;j<values.width;j++){
+                        #pragma unroll
+                        for(int v=0;v<4;v++){
+                            int r=row_base+warp*32+i*16+lane/4+((v&1)?8:0);
+                            int c=col_base+j*16+2*(lane%4)+((v&2)?8:0);
+                            auto pair=values.tiles[i][j].data[v];size_t index=size_t(r)*n+c;
+                            if(g.residual){
+                                if(g.round_before_residual){pair.x=__bfloat162float(__float2bfloat16_rn(pair.x));pair.y=__bfloat162float(__float2bfloat16_rn(pair.y));}
+                                pair.x+=float(g.residual[index]);pair.y+=float(g.residual[index+1]);
+                            }
+                            if(g.bias){pair.x+=float(g.bias[c]);pair.y+=float(g.bias[c+1]);}
+                            if(g.activation){
+                                if(g.activation==2){pair.x=__bfloat162float(__float2bfloat16_rn(pair.x));pair.y=__bfloat162float(__float2bfloat16_rn(pair.y));}
+                                pair.x=fmaxf(pair.x,0.f);pair.y=fmaxf(pair.y,0.f);pair.x*=pair.x;pair.y*=pair.y;
+                            }
+                            *reinterpret_cast<__nv_bfloat162*>(g.bf16_output+index)=__floats2bfloat162_rn(pair.x,pair.y);
+                        }
+                    }
+                }
+            }else kittens::warpgroup::store(g.out,values,{task(g,s)/g.n_tiles,col(g,s)});
         }
         kittens::warp::arrive(s.tensor_finished);
     }};

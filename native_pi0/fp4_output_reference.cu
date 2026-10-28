@@ -33,7 +33,8 @@ __global__ void reference_quant(const float* input,unsigned char* packed,unsigne
     #pragma unroll
     for(int i=0;i<16;i++){
         float value=input[block*16+i];
-        if(gelu)value=cutlass::epilogue::thread::GELU_taylor<float>{}(value);
+        if(gelu==3){value=cutlass::epilogue::thread::ReLu<float>{}(value);value=value*value;}
+        else if(gelu==1)value=cutlass::epilogue::thread::GELU_taylor<float>{}(value);
         values[i]=value*inverse;
     }
     flash_rt::nvfp4_skinny::quant_block16(values,packed+block*8,scales+block);
@@ -41,7 +42,7 @@ __global__ void reference_quant(const float* input,unsigned char* packed,unsigne
     if(scales[block]==0)for(int i=0;i<8;i++)packed[block*8+i]=0;
 }
 extern "C" int reference_fp4_output(const float* input,void* packed,void* scales,int m,int n,float global_scale,int gelu){
-    if(!input||!packed||!scales||m<1||n<16||n%16||global_scale<=0||gelu<0||gelu>2||(gelu==2&&n%32))return cudaErrorInvalidValue;
+    if(!input||!packed||!scales||m<1||n<16||n%16||global_scale<=0||gelu<0||gelu>3||(gelu==2&&n%32))return cudaErrorInvalidValue;
     float* x=nullptr;unsigned char *q=nullptr,*sf=nullptr;size_t elements=size_t(m)*n;
     size_t output_elements=gelu==2?elements/2:elements;
     cudaError_t error=cudaMalloc(&x,elements*sizeof(float));

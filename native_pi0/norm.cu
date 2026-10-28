@@ -101,7 +101,11 @@ struct NormOp {
             if(g.round_norm)v=decode16(encode16(v,g.fp16),g.fp16);
             values[i]=v*inv_global;maximum=fmaxf(maximum,fabsf(values[i]));
         }
-        if(g.format==8){
+        if(g.format==16){
+            auto* dst=reinterpret_cast<__nv_bfloat162*>(g.output)+base/2;
+            #pragma unroll
+            for(int i=0;i<8;i++)dst[i]=__floats2bfloat162_rn(values[2*i],values[2*i+1]);
+        }else if(g.format==8){
             uint4 packed;auto* bytes=reinterpret_cast<unsigned char*>(&packed);
             #pragma unroll
             for(int i=0;i<16;i++){__nv_fp8_e4m3 value(values[i]);bytes[i]=value.__x;}
@@ -130,7 +134,7 @@ struct NormContext {NormGlobals globals;int *program,*timing;int device;};
 extern "C" int create_norm(void** handle,const void* input,const void* residual,const float* gamma,const float* beta,const float* inverse_scale,
     void* residual_output,void* output,void* scales,int rows,int width,int workers,int fp16,int format,int layer,int round_norm,int round_residual,int legacy_ties,float epsilon,float global_scale){
     if(!handle)return cudaErrorInvalidValue;*handle=nullptr;
-    if(!input||!output||rows<1||width<16||width>2048||width%16||workers<1||(format!=4&&format!=8)||(format==4&&!scales)
+    if(!input||!output||rows<1||width<16||width>2048||width%16||workers<1||(format!=4&&format!=8&&format!=16)||(format==4&&!scales)||(format==16&&fp16)
        ||!isfinite(epsilon)||epsilon<=0||!isfinite(global_scale)||global_scale<=0||(fp16!=0&&fp16!=1)||(!residual&&residual_output))return cudaErrorInvalidValue;
     int device;cudaDeviceProp properties{};cudaError_t error=cudaGetDevice(&device);
     if(error==cudaSuccess)error=cudaGetDeviceProperties(&properties,device);

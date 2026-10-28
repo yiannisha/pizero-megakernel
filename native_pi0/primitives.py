@@ -4,6 +4,7 @@ import ctypes
 
 import numpy as np
 import torch
+from native_pi0.storage import packed_tma_buffer
 
 from native_pi0.quantization import swizzle_scales
 
@@ -20,7 +21,7 @@ class ResidentNVFP4:
 
     def __init__(self, library, activation, weight, *, workers=16, device="cuda",
                  output_dtype=torch.float32, bias=None, residual=None,
-                 output_global_scale=1.0, output_gelu=False, output_geglu=False):
+                 output_global_scale=1.0, output_gelu=False, output_geglu=False, output_relu2=False):
         self._handle = ctypes.c_void_p()
         self.device = torch.device(device)
         if self.device.type != "cuda":
@@ -48,10 +49,12 @@ class ResidentNVFP4:
         self.weight_global_scale = np.float32(weight.global_scale)
         if not np.isfinite(self.output_global_scale) or self.output_global_scale <= 0:
             raise ValueError("Output global scale must be finite and positive")
+        if sum(map(bool, (output_gelu, output_geglu, output_relu2))) > 1:
+            raise ValueError("Select only one output activation")
         if output_geglu and (output_gelu or bias is not None or residual is not None):
             raise ValueError("Compact GeGLU requires interleaved gate/up weights without bias/residual")
-        if output_dtype != torch.uint8 and (output_gelu or output_geglu or self.output_global_scale != 1):
-            raise ValueError("GELU/global output scaling requires packed FP4 output")
+        if output_dtype != torch.uint8 and (output_gelu or output_geglu or output_relu2 or self.output_global_scale != 1):
+            raise ValueError("Output activation/global scaling requires packed FP4 output")
         self._library = ctypes.CDLL(str(library))
         self._create = self._library.create_resident_fp4
         self._create.argtypes = [ctypes.POINTER(ctypes.c_void_p)] + [ctypes.c_void_p]*5 + [ctypes.c_int]*4 + [ctypes.c_float]
@@ -64,9 +67,11 @@ class ResidentNVFP4:
         self._destroy.restype = ctypes.c_int
         alpha = np.float32(activation.global_scale * weight.global_scale)
         with torch.cuda.device(self.device):
-            self.a, self.b, self.sa, self.sb = [
+            self.a,self.b=[packed_tma_buffer(array.shape,device=self.device).copy_(torch.from_numpy(np.ascontiguousarray(array)))
+                           for array in (activation.data,weight.data)]
+            self.sa, self.sb = [
                 torch.from_numpy(np.ascontiguousarray(array)).to(self.device)
-                for array in (activation.data, weight.data, swizzle_scales(activation.scales), swizzle_scales(weight.scales))
+                for array in (swizzle_scales(activation.scales), swizzle_scales(weight.scales))
             ]
             self.bias = None if bias is None else torch.as_tensor(bias, dtype=torch.bfloat16, device=self.device).contiguous()
             self.residual = None if residual is None else torch.as_tensor(residual, dtype=torch.bfloat16, device=self.device).contiguous()
@@ -75,7 +80,8 @@ class ResidentNVFP4:
             if self.residual is not None and tuple(self.residual.shape) != (m, n):
                 raise ValueError("Residual must have padded shape (M,N)")
             self.output_width = n//2 if output_geglu else n
-            self.output = torch.empty((m, self.output_width//2 if output_dtype==torch.uint8 else n), dtype=output_dtype, device=self.device)
+            self.output = (packed_tma_buffer((m,self.output_width//2),device=self.device) if output_dtype==torch.uint8
+                           else torch.empty((m,n),dtype=output_dtype,device=self.device))
             self.output_scales = None
             if output_dtype == torch.uint8:
                 self.output_scales = torch.zeros(((m+127)//128)*((self.output_width//16+3)//4)*512, dtype=torch.uint8, device=self.device)
@@ -89,7 +95,7 @@ class ResidentNVFP4:
             configure.restype = ctypes.c_int
             error = configure(self._handle, None if self.bias is None else self.bias.data_ptr(),
                               None if self.residual is None else self.residual.data_ptr(), self.output.data_ptr(),
-                              self.output_scales.data_ptr(), float(self.output_global_scale), 2 if output_geglu else int(output_gelu))
+                              self.output_scales.data_ptr(), float(self.output_global_scale), 3 if output_relu2 else (2 if output_geglu else int(output_gelu)))
             if error:
                 self.close()
                 raise RuntimeError(f"Native FP4 quantized-output setup CUDA error {error}")
