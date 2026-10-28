@@ -56,3 +56,29 @@ three-view/50-action test. It has 91,654 native range instructions over
 alone does not remove repeated norm, pointwise, metadata and skinny GEMM work.
 The next implementation gate is same-weight BF16 numerical parity, followed
 by source-backed fusion and calibrated precision porting above.
+
+## Realtime-VLA fusion audit (pinned eb46c8d)
+
+Realtime-VLA is another important source for **π0 fusion**, especially its
+small action-expert path. The executable sources are
+[`pi0_infer.py`](../third_party/realtime-vla/pi0_infer.py) and
+[`convert_from_jax.py`](../third_party/realtime-vla/convert_from_jax.py).
+It uses BF16 Triton kernels and a captured CUDA graph; it does not implement
+the Hazy VM. Its `optimized` scheduling and tile branch is enabled only for
+SM120, 2–3 views, chunk 63 and an empty prompt. Our B200/SM100 test takes its
+general branch, so the README's RTX 5090 optimized timings do not describe our
+matched baseline.
+
+| Realtime-VLA fusion | Source | Transfer to native π0 |
+|---|---|---|
+| Offline action input projection × action half of the first time MLP; precompute step-dependent time bias | `convert_from_jax.py` around `fused_weight`, `time_dependent_biases`; decoder in `pi0_infer.py` | Highest priority for the 10-step loop: replace action projection, concat and first time MLP with one small GEMM plus fused SiLU. This changes BF16 rounding order, so compare against same-weight OpenPI before accepting. |
+| Fold final RMS weight and `-1/steps` into output projection; accumulate velocity into noise | `convert_from_jax.py` final projection transform; `pi0_infer.py::rms_matmul_k_1024_32_bias_res` | Native output epilogue can do normalization, projection, bias and Euler update; preserve the reference's explicit FP32 multiply/add rounding until parity is measured. |
+| QKV projection with RoPE and direct Q/K/V writes; gate/up matmul with GeGLU; GEMM bias+residual and bias+GELU epilogues | `pi0_infer.py::matmul_n_2048_2560_qkv_rope`, `scaled_matmul_rope_qkv`, `scaled_matmul_grouped_gate`, `matmul_small_bias_res`, `matmul_small_bias_gelu` | Emit native range operators with fused epilogues and publish source row-band counters only after all writes. Avoid separate RoPE, GeGLU, residual and GELU instructions. |
+| Compute an RMS row factor separately, consume it within the QKV/gate GEMM instead of materializing a full normalized activation | `pi0_infer.py::rmsnorm_factor_kernel`, `scaled_matmul_rope_qkv`, `scaled_matmul_grouped_gate` | Keep a compact factor buffer or per-row shared state, then scale A during native TMA/GEMM staging. This can remove large intermediate writes but needs a tile dependency and exact rounding gate. |
+| Last prefix layer writes only K/V needed by the expert; encoder/decoder overlap via streams and per-layer events | `pi0_infer.py::transformer_encoder`, `record_run`, `transformer_decoder` | Prune unused last-layer prefix Q/O/FFN work and express prefix-cache readiness as direct data counters inside the single VM. The native scheduler can overlap independent work without copying the CUDA-stream design. |
+| Grouped small-row decoder GEMMs and fused down-projection residual | `pi0_infer.py::matmul_grouped_res`, `matmul_k_4096_1024_res` | Adapt tile shape and K partition to SM100, then keep the residual add in the native matrix epilogue. The exact SM120 tile parameters and PDL launches are not portable. |
+
+These are concrete candidates, not measured speedups for our implementation.
+The immediate next step remains the failing BF16 full-model accuracy gate;
+then the action/time and GEMM epilogue fusions should reduce the current
+91,654 range instructions and 238 ms complete-forward time.
