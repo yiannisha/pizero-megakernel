@@ -71,7 +71,7 @@ __device__ void eager_attend(StateT& state,int task,const T* q,const T* k,const 
             for (int j = 0; j < VW; ++j) {
                 // Cosmos keeps Q in BF16 without pre-scaling. Scaling the
                 // FP32 QK scores avoids another lossy BF16 Q rounding.
-                
+
             }
             *reinterpret_cast<V*>(&ks[r][c]) = pack_vec<T, VW>(lo);
             *reinterpret_cast<V*>(&ks[r][c + H2]) = pack_vec<T, VW>(hi);

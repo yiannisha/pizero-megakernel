@@ -1,12 +1,15 @@
 # π0 megakernel workspace
 
-The active implementation is being rebuilt as a native Hazy Megakernels
-program using Gemma-style static instruction streams and tile-range operators.
+The active BF16 reference executes the complete π0 forward in one native Hazy
+Megakernels launch using static instruction streams and tile-range operators.
+Same-weight action parity remains open (3.47% NRMSE in the latest test).
 The earlier generic ready-queue and stage-counter executors have been retired.
 They do not provide a validated π0 model or a performance baseline.
 
 The architecture decision and keep/archive audit are in
 [native_pi0/IMPLEMENTATION.md](native_pi0/IMPLEMENTATION.md).
+The [FlashRT transfer audit](native_pi0/FLASHRT_TRANSFER_AUDIT.md) maps the
+actual π0 and π0.5 kernels, precision and fusions to this backend.
 The original full objective remains [PLAN.md](PLAN.md): complete π0, all ten
 Euler steps in one original VM launch, calibrated precision and matched
 end-to-end performance validation. Scheduling follows the user's clarification:
