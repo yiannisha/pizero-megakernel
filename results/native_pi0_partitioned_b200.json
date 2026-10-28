@@ -1,0 +1,128 @@
+{
+  "workload": {
+    "views": 3,
+    "prompt_len": 0,
+    "chunk": 50,
+    "flow_steps": 10,
+    "seed": 101,
+    "native_workers": 148,
+    "checkpoint": null,
+    "same_model_and_inputs": true
+  },
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "capability": [
+      10,
+      0
+    ],
+    "torch": "2.8.0+cu128",
+    "cuda": "12.8"
+  },
+  "library_sha256": "4333c116103b92ed3f9013e642b583bd86afff59f490e108afd50a2ac9565bf1",
+  "source_sha256": {
+    "benchmarks/matched_native.py": "8feb3e414a28fc39f61a5affd35908197dfe12cdc60aa1f6c750aede11ad74a0",
+    "benchmarks/openpi_backend.py": "dcdd72dc3c5d215d1cf5952ba00e6da1987718a001d1ed498d0b617fd52e7b64",
+    "native_pi0/model.py": "c25cb0873a32fdc7b126edf33e59bdee7eb05c79c643a1811f51f7fffe4a8417",
+    "native_pi0/dense.py": "456f54368c7ed58e6187630e1da451e513cb175da719956c75261eb792e4c7b2"
+  },
+  "backends": {
+    "native_fused_partitioned": {
+      "validation": {
+        "nrmse": 0.008407791145145893,
+        "normalized_max_abs": 0.03172445669770241,
+        "cosine": 0.9999648928642273,
+        "finite": true
+      },
+      "timing": {
+        "gpu_median_ms": 174.01023864746094,
+        "gpu_samples_ms": [
+          174.01023864746094,
+          173.98573303222656,
+          174.03248596191406
+        ],
+        "wall_median_ms": 174.159106,
+        "wall_samples_ms": [
+          174.180935,
+          174.157213,
+          174.159106
+        ],
+        "other_compute_pids": [],
+        "gpu_isolation_verified": true
+      },
+      "single_native_kernel": false,
+      "program": {
+        "workers": 148,
+        "stream_length": 464,
+        "instructions": 61898,
+        "compute_tiles": 100376,
+        "largest_tile_range": 47,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "component_ranges": {
+        "vision": [
+          0,
+          192
+        ],
+        "prefix": [
+          192,
+          314
+        ],
+        "expert": [
+          314,
+          1625
+        ]
+      },
+      "phases": {
+        "vision": {
+          "gpu_median_ms": 12.894720077514648,
+          "gpu_samples_ms": [
+            12.887200355529785,
+            12.894720077514648,
+            12.89731216430664
+          ],
+          "wall_median_ms": 13.034257,
+          "wall_samples_ms": [
+            13.041857,
+            13.033181,
+            13.034257
+          ],
+          "other_compute_pids": [],
+          "gpu_isolation_verified": true
+        },
+        "prefix": {
+          "gpu_median_ms": 21.811071395874023,
+          "gpu_samples_ms": [
+            21.811071395874023,
+            21.793088912963867,
+            21.879648208618164
+          ],
+          "wall_median_ms": 22.094662,
+          "wall_samples_ms": [
+            21.985472,
+            22.094662,
+            22.103392
+          ],
+          "other_compute_pids": [],
+          "gpu_isolation_verified": true
+        },
+        "expert": {
+          "gpu_median_ms": 139.44154357910156,
+          "gpu_samples_ms": [
+            139.42813110351562,
+            139.4686737060547,
+            139.44154357910156
+          ],
+          "wall_median_ms": 139.584844,
+          "wall_samples_ms": [
+            139.584844,
+            139.595697,
+            139.578725
+          ],
+          "other_compute_pids": [],
+          "gpu_isolation_verified": true
+        }
+      }
+    }
+  }
+}

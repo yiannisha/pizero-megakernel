@@ -57,11 +57,11 @@ class NativePi0:
     def from_model(cls,model,**kwargs):return cls(model,**kwargs)
 
     def __init__(self,model,*,num_views=3,prompt_len=0,chunk_size=50,flow_steps=10,precision='auto',library=None,workers=148,
-                 fuse_vision_gelu=True,skinny_expert=True,fuse_qkv_rope=True):
+                 fuse_vision_gelu=True,skinny_expert=True,fuse_qkv_rope=True,partitioned=False):
         if model.config.pi05 or precision not in ('auto','bf16'):raise ValueError('Reference path supports ordinary π0 with BF16 transformers')
         if num_views not in (1,2,3) or prompt_len<0 or chunk_size<1 or flow_steps<1:raise ValueError('Invalid fixed inference dimensions')
         self.model=model;self.num_views=num_views;self.prompt_len=prompt_len;self.chunk_size=chunk_size;self.flow_steps=flow_steps
-        self.precision_policy='bf16_reference';self.workers=workers;self.fuse_vision_gelu=fuse_vision_gelu;self.skinny_expert=skinny_expert;self.fuse_qkv_rope=fuse_qkv_rope;self.device=next(model.parameters()).device
+        self.precision_policy='bf16_reference';self.workers=workers;self.fuse_vision_gelu=fuse_vision_gelu;self.skinny_expert=skinny_expert;self.fuse_qkv_rope=fuse_qkv_rope;self.partitioned=partitioned;self.device=next(model.parameters()).device
         if self.device.type!='cuda':raise ValueError('Supply a CUDA OpenPI model')
         self.owners=ExitStack();self.buffers=[];self.weight_buffers={};self.stages=[];self.stage_tasks=[];self.landmarks={};self.handle=C.c_void_p();self.producers={};self.cache_producers={};self.opcodes=[];self.stage_cost=[]
         if library is None:
@@ -222,6 +222,7 @@ class NativePi0:
             if (i+1)%9==0:print('Native reference: vision layers',i+1,flush=True)
         x=self.norm(x,vision.post_layernorm,rms=False)
         projector=pg.paligemma.multi_modal_projector.linear;x=self.dense(x,projector.weight,projector.bias,rows=self.num_views*256)
+        vision_end=len(self.stages)
         prefix_rows=self.num_views*256+self.prompt_len
         x=self.scalar(10,(padded(prefix_rows,128),2048),a=x,b=pg.paligemma.language_model.embed_tokens.weight,
             p0=self.num_views*256,p1=self.prompt_len,alpha=math.sqrt(2048.))
@@ -230,6 +231,7 @@ class NativePi0:
             cache=tuple(self.tensor((1,prefix_rows+self.chunk_size+1,1,256)) for _ in range(2));self.caches.append(cache)
             x=self.block(x,layer,rows=prefix_rows,batches=1,heads=8,hk=1,hd=256,rms=True,cache=cache,rope=prefix_rope,name=f'prefix.{i}',cache_only=i==17)
             if (i+1)%6==0:print('Native reference: prefix layers',i+1,flush=True)
+        prefix_end=len(self.stages)
         state=self.linear32(None,self.model.state_proj,1,slot=2)
         actions=None;suffix_rows=self.chunk_size+1;suffix_rope=self.rope(suffix_rows,prefix_rows,256,pg.gemma_expert.model.rotary_emb)
         # Immutable action half of the first time MLP: W_a(W_in noise + b_in)
@@ -262,6 +264,7 @@ class NativePi0:
             self.landmarks[f'actions.{step}']=actions;time=np.float32(time+dt)
             print('Native reference: expert denoising step',step+1,'wired',flush=True)
         self.output=actions.view(1,self.chunk_size,32)
+        self.component_ranges={'vision':(0,vision_end),'prefix':(vision_end,prefix_end),'expert':(prefix_end,len(self.stages))}
         self.epoch=0
         self.code=linear_streams([LinearWork(t,c) for t,c in zip(self.stage_tasks,self.stage_cost)],self.workers)
         for worker in self.code:
@@ -269,29 +272,54 @@ class NativePi0:
                 if instruction[0]:instruction[0]=self.opcodes[instruction[1]]
         self.plan=program_summary(self.code)
         print('Native pi0 static program:',len(self.stages),'operations,',self.plan,flush=True)
-        specs=(Stage*len(self.stages))(*self.stages)
         create=self.library.create_native_model;create.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_void_p,C.c_void_p,C.c_int,C.c_int];create.restype=C.c_int
-        error=create(C.byref(self.handle),len(specs),C.cast(specs,C.c_void_p),self.code.ctypes.data,self.workers,self.code.shape[1])
-        if error:raise RuntimeError(f'Native pi0 setup CUDA error {error}')
+        self.component_handles={}
+        if self.partitioned:
+            for name,(start,end) in self.component_ranges.items():
+                specs=[]
+                for stage in self.stages[start:end]:
+                    sources=(C.c_int*3)(*[(p-start if p>=start else -1) for p in stage.sources])
+                    specs.append(Stage(stage.kind,stage.handle,stage.scalar,sources))
+                code=linear_streams([LinearWork(t,c) for t,c in zip(self.stage_tasks[start:end],self.stage_cost[start:end])],self.workers)
+                for worker in code:
+                    for instruction in worker:
+                        if instruction[0]:instruction[0]=self.opcodes[start+instruction[1]]
+                handle=C.c_void_p();packed=(Stage*len(specs))(*specs)
+                error=create(C.byref(handle),len(packed),C.cast(packed,C.c_void_p),code.ctypes.data,self.workers,code.shape[1])
+                if error:raise RuntimeError(f'Native pi0 {name} setup CUDA error {error}')
+                self.component_handles[name]=handle
+        else:
+            specs=(Stage*len(self.stages))(*self.stages)
+            error=create(C.byref(self.handle),len(specs),C.cast(specs,C.c_void_p),self.code.ctypes.data,self.workers,self.code.shape[1])
+            if error:raise RuntimeError(f'Native pi0 setup CUDA error {error}')
         self.launch=self.library.launch_native_model;self.launch.argtypes=[C.c_void_p]*6;self.launch.restype=C.c_int
         self.destroy=self.library.destroy_native_model;self.destroy.argtypes=[C.c_void_p];self.destroy.restype=C.c_int
 
     def forward(self,images,state,noise,tokens):
-        if not self.handle.value:raise RuntimeError('Native π0 reference is closed')
+        if not (self.handle.value or self.component_handles):raise RuntimeError('Native π0 reference is closed')
         for tensor,shape,dtype in ((images,(self.num_views,224,224,3),torch.float32),(state,(1,32),torch.float32),
             (noise,(1,self.chunk_size,32),torch.float32),(tokens,(1,self.prompt_len),torch.int64)):
             if tensor.device!=self.device or tensor.dtype!=dtype or tuple(tensor.shape)!=shape or not tensor.is_contiguous():
                 raise ValueError(('Resident π0 input layout',shape,dtype))
-        with torch.cuda.device(self.device):error=self.launch(self.handle,torch.cuda.current_stream(self.device).cuda_stream,
-            images.data_ptr(),state.data_ptr(),noise.data_ptr(),tokens.data_ptr())
-        if error:raise RuntimeError(f'Native π0 reference launch error {error}')
+        names=('vision','prefix','expert') if self.partitioned else (None,)
+        for name in names:self.launch_component(name,images,state,noise,tokens)
         self.epoch+=1;return self.output
+
+    def launch_component(self,name,images,state,noise,tokens):
+        handle=self.component_handles[name] if name is not None else self.handle
+        with torch.cuda.device(self.device):error=self.launch(handle,torch.cuda.current_stream(self.device).cuda_stream,
+            images.data_ptr(),state.data_ptr(),noise.data_ptr(),tokens.data_ptr())
+        if error:raise RuntimeError(f'Native π0 {name or "full"} launch error {error}')
 
     def close(self):
         if self.handle.value:
             with torch.cuda.device(self.device):error=self.destroy(self.handle)
             if error:raise RuntimeError(f'Native π0 reference teardown error {error}')
             self.handle=C.c_void_p()
+        for handle in self.component_handles.values():
+            with torch.cuda.device(self.device):error=self.destroy(handle)
+            if error:raise RuntimeError(f'Native π0 component teardown error {error}')
+        self.component_handles.clear()
         self.owners.close()
 
     def __enter__(self):return self

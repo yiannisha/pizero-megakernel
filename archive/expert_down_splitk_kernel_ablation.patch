@@ -1,0 +1,226 @@
+diff --git a/native_pi0/dense.cu b/native_pi0/dense.cu
+index 5994a62..97f9a6f 100644
+--- a/native_pi0/dense.cu
++++ b/native_pi0/dense.cu
+@@ -24,6 +24,9 @@ template<class Element> struct DenseGlobals {
+     int gelu_columns=0;
+     const float* rms_factors=nullptr;
+     int skinny=0;
++    int split_k=1;
++    float* split_partials=nullptr;
++    unsigned long long* split_counters=nullptr;
+     const kittens::bf16 *rope_cos=nullptr,*rope_sin=nullptr;
+     kittens::bf16 *rope_cache_k=nullptr,*rope_cache_v=nullptr;
+     int rope_key_offset=0,rope_rows=0,rope_cache_base=0;
+@@ -239,6 +242,18 @@ extern "C" int configure_dense_skinny(void* handle){
+     c->globals.skinny=1;return cudaSuccess;
+ }
+ 
++extern "C" int configure_dense_split_k(void* handle,int splits,float* partials,unsigned long long* counters){
++    if(!handle||!partials||!counters||splits<2)return cudaErrorInvalidValue;
++    auto* base=static_cast<DenseContextBase*>(handle);
++    if(base->fp8)return cudaErrorInvalidValue;
++    auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
++    auto& g=c->globals;
++    if(!g.skinny||!g.bf16_output||g.bias||g.geglu_output||g.gelu_columns||g.rms_factors||g.rope_cos||
++       g.a.cols()%(64*splits)||int64_t(g.tasks)*splits>INT_MAX)return cudaErrorInvalidValue;
++    g.split_k=splits;g.split_partials=partials;g.split_counters=counters;g.tasks*=splits;
++    return cudaSuccess;
++}
++
+ extern "C" int configure_dense_qkv_rope(void* handle,const void* cos,const void* sin,void* cache_k,void* cache_v,
+                                            int logical_rows,int key_offset,int cache_base){
+     if(!handle||!cos||!sin||!cache_k||!cache_v||logical_rows<1||key_offset<0||key_offset%256||cache_base<0)return cudaErrorInvalidValue;
+diff --git a/native_pi0/dense.py b/native_pi0/dense.py
+index 6b8f593..a4901a9 100644
+--- a/native_pi0/dense.py
++++ b/native_pi0/dense.py
+@@ -14,7 +14,7 @@ class ResidentDense:
+     """
+     def __init__(self,library,inputs,weights,*,alpha=1.,bias=None,residual=None,output_dtype=torch.bfloat16,workers=148,
+                  input_buffer=None,weight_buffer=None,output_buffer=None,residual_buffer=None,round_before_residual=False,geglu_output=None,gelu=False,rms_factors=None,skinny=False,
+-                 rope=None,kv_cache=None,rope_key_offset=0,cache_base=0):
++                 rope=None,kv_cache=None,rope_key_offset=0,cache_base=0,split_k=1):
+         self.handle=ctypes.c_void_p();self.library=ctypes.CDLL(str(library))
+         if inputs.ndim!=2 or weights.ndim!=2 or inputs.shape[1]!=weights.shape[1]:raise ValueError('Inputs and weights must be [M,K] and [N,K]')
+         if inputs.dtype not in (torch.bfloat16,torch.float8_e4m3fn) or weights.dtype!=inputs.dtype:raise ValueError('Inputs and weights must share BF16 or FP8 E4M3 dtype')
+@@ -95,6 +95,15 @@ class ResidentDense:
+             configure.argtypes=[ctypes.c_void_p];configure.restype=ctypes.c_int
+             error=configure(self.handle)
+             if error:raise RuntimeError(f'Native dense skinny setup error {error}')
++        if split_k!=1:
++            if not skinny or k%(64*split_k) or bias is not None or geglu_output is not None or gelu or rms_factors is not None or rope is not None:
++                raise ValueError('Split K requires a skinny, unfused BF16 GEMM with divisible K')
++            self.split_partials=torch.empty((split_k,mp,npad),dtype=torch.float32,device=self.device)
++            self.split_counters=torch.zeros((mp//128,npad//128),dtype=torch.int64,device=self.device)
++            configure=self.library.configure_dense_split_k
++            configure.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p];configure.restype=ctypes.c_int
++            error=configure(self.handle,split_k,self.split_partials.data_ptr(),self.split_counters.data_ptr())
++            if error:raise RuntimeError(f'Native dense split K setup error {error}')
+         if rope is not None:
+             if kv_cache is None or len(rope)!=2 or len(kv_cache)!=2 or inputs.dtype!=torch.bfloat16 or bias is not None or residual is not None:
+                 raise ValueError('QKV RoPE epilogue requires BF16 projection and K/V cache')
+diff --git a/native_pi0/model.cu b/native_pi0/model.cu
+index 2c13b44..caf95cb 100644
+--- a/native_pi0/model.cu
++++ b/native_pi0/model.cu
+@@ -231,7 +231,11 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
+         for(int t=0;t<tasks[stage];++t){
+             std::vector<int> bands(data[stage].bands,0);
+             auto add=[&](int first,int last){for(int b=first/128;b<=last/128;++b)++bands[b];};
+-            if(spec.kind==0)add((t/matrices[stage].matrix.n_tiles)*128,std::min(rows-1,(t/matrices[stage].matrix.n_tiles)*128+127));
++            if(spec.kind==0){
++                const auto& f=matrices[stage].matrix;
++                int row=(t/f.split_k/f.n_tiles)*128;
++                add(row,std::min(rows-1,row+127));
++            }
+             else if(spec.kind==2)add(t*8,std::min(rows-1,t*8+7));
+             else if(spec.kind==3){int tile=spec.scalar.mode==5||spec.scalar.mode==6?128:16384;add(int(int64_t(t)*tile/width),int(std::min(int64_t(rows)*width-1,int64_t(t+1)*tile-1)/width));}
+             else{
+diff --git a/native_pi0/native.cu b/native_pi0/native.cu
+index 44ffd05..12c502d 100644
+--- a/native_pi0/native.cu
++++ b/native_pi0/native.cu
+@@ -39,6 +39,8 @@ template<int TileRows> struct NativeLinearOpT {
+     using TileA=kittens::st<kittens::bf16,TileRows,64>;
+     using TileB=typename Globals<kittens::bf16>::Tile;
+     static __device__ const NativeMatrix& stage(const NativeGlobals& g,State& s){return g.matrices[s.instruction()[1]];}
++    static __device__ int output_task(const DenseGlobals<kittens::bf16>& f,int task){return task/f.split_k;}
++    static __device__ int split_id(const DenseGlobals<kittens::bf16>& f,int task){return task%f.split_k;}
+     static __device__ TileA& tile_a(State& s,int i){return *reinterpret_cast<TileA*>(s.pages[s.pid(i)].ptr());}
+     static __device__ TileB& tile_b(State& s,int i){return *reinterpret_cast<TileB*>(s.pages[s.pid(i)].ptr());}
+     static __device__ void finish_qkv(const NativeMatrix& st,int task){
+@@ -81,7 +83,7 @@ template<int TileRows> struct NativeLinearOpT {
+     };
+     struct loader {static __device__ void run(const NativeGlobals& g,State& s){
+         const auto& st=stage(g,s);const auto& f=st.matrix;
+-        int count=s.instruction()[3],first=s.instruction()[2],iterations=f.a.cols()/64;
++        int count=s.instruction()[3],first=s.instruction()[2],iterations=f.a.cols()/(64*f.split_k);
+         int used=2*min(count*iterations,2),lane=kittens::laneid();
+         if(lane>=used&&lane<Cfg::NUM_PAGES){int p=s.pid(lane);s.wait_page_ready(p);s.finish_page(p,4);}
+         if(lane==0){
+@@ -90,7 +92,7 @@ template<int TileRows> struct NativeLinearOpT {
+             asm volatile("fence.proxy.tensormap::generic.acquire.gpu [%0], 128;"::"l"(b):"memory");
+             int last_band=-1;
+             for(int t=0;t<count;++t){
+-                int task=first+t,band=task/f.n_tiles;
++                int task=first+t,out_task=output_task(f,task),band=out_task/f.n_tiles;
+                 if(band!=last_band&&st.input_counter>=0){
+                     auto expected=g.epoch*(st.input_expected?st.input_expected[band]:st.input_tiles);
+                     while(native_acquire(g.ready+st.input_counter+band)<expected)__nanosleep(20);
+@@ -109,15 +111,16 @@ template<int TileRows> struct NativeLinearOpT {
+                     kittens::wait(s.semaphores()[2+ring],1-phase);
+                     if(index<2){s.wait_page_ready(s.pid(2*ring));s.wait_page_ready(s.pid(2*ring+1));}
+                     kittens::tma::expect_bytes(s.semaphores()[ring],sizeof(TileA)+sizeof(TileB));
+-                    kittens::tma::load_async(tile_a(s,2*ring),f.a,{band,k},s.semaphores()[ring]);
+-                    kittens::tma::load_async(tile_b(s,2*ring+1),f.b,{task%f.n_tiles,k},s.semaphores()[ring]);
++                    int full_k=split_id(f,task)*iterations+k;
++                    kittens::tma::load_async(tile_a(s,2*ring),f.a,{band,full_k},s.semaphores()[ring]);
++                    kittens::tma::load_async(tile_b(s,2*ring+1),f.b,{out_task%f.n_tiles,full_k},s.semaphores()[ring]);
+                 }
+             }
+         }
+     }};
+     struct launcher {static __device__ void run(const NativeGlobals& g,State& s){
+         if(kittens::laneid()==0){
+-            const auto& f=stage(g,s).matrix;int count=s.instruction()[3],iterations=f.a.cols()/64;
++            const auto& f=stage(g,s).matrix;int count=s.instruction()[3],iterations=f.a.cols()/(64*f.split_k);
+             s.wait_tensor_ready();auto acc=dense_accumulator<TileRows>(s);
+             for(int t=0;t<count;++t){
+                 // The consumer acknowledges its TMEM load/store before the
+@@ -135,12 +138,69 @@ template<int TileRows> struct NativeLinearOpT {
+             for(int i=0;i<2*min(count*iterations,2);++i)s.finish_page(s.pid(i),4);
+         }
+     }};
++    static __device__ bool consume_split(const DenseGlobals<kittens::bf16>& f,State& s,int task,int phase){
++        kittens::wait(s.semaphores()[4],phase);
++        auto acc=dense_accumulator<TileRows>(s);
++        kittens::rt_fl<TileRows/4,128> values;
++        if constexpr(TileRows==64){
++            auto slice=kittens::tt<float,16,128>(acc.addr+((32*kittens::warpid())<<16));
++            kittens::group<1>::load_async(values,slice);
++        }else kittens::warpgroup::load_async(values,acc);
++        kittens::tensor_load_wait();
++        int out_task=output_task(f,task),split=split_id(f,task);
++        int row_base=(out_task/f.n_tiles)*128,col_base=(out_task%f.n_tiles)*128;
++        int lane=kittens::laneid(),warp=kittens::warpid(),n=f.out.cols(),m=f.a.rows();
++#pragma unroll
++        for(int i=0;i<values.height;++i){
++#pragma unroll
++            for(int j=0;j<values.width;++j){
++#pragma unroll
++                for(int half=0;half<2;++half){
++                    int r=row_base+warp*(TileRows/4)+i*16+lane/4+half*8;
++                    int c=col_base+j*16+2*(lane%4);
++                    size_t index=(size_t(split)*m+r)*n+c;
++                    auto lo=values.tiles[i][j].data[half],hi=values.tiles[i][j].data[half+2];
++                    f.split_partials[index]=lo.x*f.alpha;
++                    f.split_partials[index+1]=lo.y*f.alpha;
++                    f.split_partials[index+8]=hi.x*f.alpha;
++                    f.split_partials[index+9]=hi.y*f.alpha;
++                }
++            }
++        }
++        __threadfence();asm volatile("bar.sync 6, 128;":::"memory");
++        __shared__ int last_split;
++        if(threadIdx.x==0){
++            auto* counter=f.split_counters+out_task;
++            unsigned long long prior=atomicAdd(counter,1ULL);
++            last_split=int(prior%f.split_k)==f.split_k-1;
++        }
++        asm volatile("bar.sync 6, 128;":::"memory");
++        if(last_split){
++            for(int i=threadIdx.x;i<TileRows*128;i+=128){
++                int r=row_base+i/128,c=col_base+i%128;
++                float value=0.f;
++                for(int split=0;split<f.split_k;++split)value+=f.split_partials[(size_t(split)*m+r)*n+c];
++                size_t index=size_t(r)*n+c;
++                if(f.residual){
++                    if(f.round_before_residual)value=float(kittens::bf16(value));
++                    value+=float(f.residual[index]);
++                }
++                f.bf16_output[index]=kittens::bf16(value);
++            }
++            __threadfence();asm volatile("bar.sync 6, 128;":::"memory");
++        }
++        return last_split;
++    }
+     struct consumer {static __device__ void run(const NativeGlobals& g,State& s){
+         const auto& st=stage(g,s);int first=s.instruction()[2],count=s.instruction()[3],contribution=0;
+         for(int t=0;t<count;++t){
+-            int task=first+t,band=task/st.matrix.n_tiles;
+-            const DenseView<kittens::bf16> view(st.matrix,task);
+-            DenseOp<kittens::bf16>::template consume<TileRows>(view,s,t&1,false);
++            int task=first+t,out_task=output_task(st.matrix,task),band=out_task/st.matrix.n_tiles;
++            bool finished=false;
++            if(st.matrix.split_k>1)finished=consume_split(st.matrix,s,task,t&1);
++            else{
++                const DenseView<kittens::bf16> view(st.matrix,out_task);
++                DenseOp<kittens::bf16>::template consume<TileRows>(view,s,t&1,false);
++            }
+             if(st.raw_qkv_counter>=0){
+                 asm volatile("fence.proxy.async.global;":::"memory");
+                 asm volatile("bar.sync 6, 128;":::"memory");
+@@ -151,12 +211,16 @@ template<int TileRows> struct NativeLinearOpT {
+                 asm volatile("bar.sync 6, 128;":::"memory");
+                 finish_qkv(st,task);
+             }
+-            ++contribution;
+-            if(t+1==count||(task+1)/st.matrix.n_tiles!=band){
+-                asm volatile("fence.proxy.async.global;":::"memory");
+-                asm volatile("bar.sync 6, 128;":::"memory");
+-                if(threadIdx.x==0)native_publish(g.ready+st.output_counter+band,contribution);
+-                contribution=0;
++            if(st.matrix.split_k>1){
++                if(finished&&threadIdx.x==0)native_publish(g.ready+st.output_counter+band,st.matrix.split_k);
++            }else{
++                ++contribution;
++                if(t+1==count||(out_task+1)/st.matrix.n_tiles!=band){
++                    asm volatile("fence.proxy.async.global;":::"memory");
++                    asm volatile("bar.sync 6, 128;":::"memory");
++                    if(threadIdx.x==0)native_publish(g.ready+st.output_counter+band,contribution);
++                    contribution=0;
++                }
+             }
+             asm volatile("bar.sync 6, 128;":::"memory");
+             kittens::warp::arrive(s.semaphores()[5]);
