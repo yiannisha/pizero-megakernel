@@ -11,6 +11,7 @@ template<class Element> struct DenseGlobals {
     int workers,tasks,m_tiles,n_tiles;
     const kittens::bf16 *bias,*residual;
     kittens::bf16* bf16_output;
+    int round_before_residual=0;
 };
 template<class Element> struct DenseView {
     using Tile=typename Globals<Element>::Tile;
@@ -24,9 +25,10 @@ template<class Element> struct DenseView {
     } a,b;
     Output out;float alpha;int workers,tasks,m_tiles,n_tiles,fixed_task;
     const kittens::bf16 *bias,*residual; kittens::bf16* bf16_output;
+    int round_before_residual;
     __device__ DenseView(const DenseGlobals<Element>& g,int task):
         a{g.a.template get_tma<Tile,2>(),g.a.cols()},b{g.b.template get_tma<Tile,2>(),g.b.cols()},out(g.out),alpha(g.alpha),
-        workers(g.workers),tasks(g.tasks),m_tiles(g.m_tiles),n_tiles(g.n_tiles),fixed_task(task),bias(g.bias),residual(g.residual),bf16_output(g.bf16_output){}
+        workers(g.workers),tasks(g.tasks),m_tiles(g.m_tiles),n_tiles(g.n_tiles),fixed_task(task),bias(g.bias),residual(g.residual),bf16_output(g.bf16_output),round_before_residual(g.round_before_residual){}
 };
 template<class Element> struct DenseOp {
     static constexpr int opcode=1;
@@ -44,9 +46,9 @@ template<class Element> struct DenseOp {
     struct launcher {static __device__ void run(const G& g,State& s){
         DenseView<Element> view(g,task(g,s));Matmul<Element>::launcher::run(view,s);
     }};
-    template<class View> static __device__ void consume(const View& g,State& s){
+    template<class View> static __device__ void consume(const View& g,State& s,int phase=0,bool retire_tensor=true){
         int task=Matmul<Element>::task(g,s);if(task>=g.tasks)return;
-        kittens::wait(s.semaphores()[4],0);
+        kittens::wait(s.semaphores()[4],phase);
         auto acc=s.tensor_alloc.template allocate<kittens::tt<float,128,128>>(0);
         kittens::rt_fl<32,128> values;kittens::warpgroup::load_async(values,acc);kittens::tensor_load_wait();
         kittens::warp::mul(values,values,g.alpha);
@@ -63,6 +65,10 @@ template<class Element> struct DenseOp {
                         int r=row_base+warp*32+i*16+lane/4+half*8,c=col_base+j*16+2*(lane%4);
                         size_t index=size_t(r)*n+c;
                         auto lo=values.tiles[i][j].data[half],hi=values.tiles[i][j].data[half+2];
+                        if(g.residual&&g.round_before_residual){
+                            lo.x=float(kittens::bf16(lo.x));lo.y=float(kittens::bf16(lo.y));
+                            hi.x=float(kittens::bf16(hi.x));hi.y=float(kittens::bf16(hi.y));
+                        }
                         if(g.residual){lo.x+=float(g.residual[index]);lo.y+=float(g.residual[index+1]);hi.x+=float(g.residual[index+8]);hi.y+=float(g.residual[index+9]);}
                         if(g.bias){lo.x+=float(g.bias[c]);lo.y+=float(g.bias[c+1]);hi.x+=float(g.bias[c+8]);hi.y+=float(g.bias[c+9]);}
                         if(g.bf16_output){
@@ -76,7 +82,7 @@ template<class Element> struct DenseOp {
                 }
             }
         }
-        kittens::warp::arrive(s.tensor_finished);
+        if(retire_tensor)kittens::warp::arrive(s.tensor_finished);
     }
     struct consumer {static __device__ void run(const G& g,State& s){DenseView<Element> view(g,task(g,s));consume(view,s);}};
     using storer=megakernel::NoOp<Cfg>::storer;

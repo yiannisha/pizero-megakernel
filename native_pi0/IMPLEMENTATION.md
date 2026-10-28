@@ -84,7 +84,7 @@ FP32 input/output/time heads, and Euler updates. `NativePi0` owns the fixed
 instruction streams and data counters; forward passes only root input pointers
 and launches `megakernel::mk<..., NativeModelGlobals, ...>` once.
 
-The initial full run is recorded in `results/native_pi0_static_full.json`:
+The initial full run is recorded in `archive/static-native-bringup-2026-10-28/native_pi0_static_full.json`:
 one original VM kernel, nonzero complete actions, action NRMSE 0.03443 against
 same-weight OpenPI. This fails the existing numerical gate. It is evidence of
 complete execution, not accuracy or performance acceptance. Vision attention
@@ -95,3 +95,8 @@ The initial program contains 2,544 operations and 109,510 native range
 instructions covering 189,552 compute tiles. These are precompiled streams,
 not dynamically dispatched tasks. Further fusion is still required; merely
 removing a queue does not establish good end-to-end performance.
+
+The later tensor-core Gemma attention path uses two QK passes to preserve
+eager BF16 score/scale and normalized-probability rounding. The latest vision
+trial uses descending key blocks. `results/native_pi0_static_flash.json`
+records the current full-model attempt; numerical acceptance remains open.

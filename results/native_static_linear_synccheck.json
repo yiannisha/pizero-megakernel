@@ -1,0 +1,101 @@
+{
+  "scope": "Native static tile-range matrix programs; not yet complete Pi0",
+  "source_sha256": {
+    "native_pi0/native.cu": "136d9972dfd21b9e31d0050d99f84624d2ae7b053ecf0d445f24130a01fa9bc5",
+    "native_pi0/program.py": "19bff7f243cf893410e5105ddc2ad4d2e6020e914720a4c0b6018f575a9e7a8e",
+    "native_pi0/linear.py": "b8cae35b5ddade61aa90337e08e10ad0490b999ca0fb65957e54b05dcfb442fd",
+    "native_pi0/dense.cu": "c826efc7975e441e09a5ceb69dff208e84d345121149f051d5456f0dda18a9e7",
+    "native_pi0/dense.py": "c663cfb57b9a68e09eddad8ce290c76d03455c45ff529d43ca3df2303e8d82a4",
+    "native_pi0/tcgen_probe.cu": "390b854c4f55bfc3020bbf079e646e4394503329b1977c72d10d2b5a2f5c0d5b",
+    "scripts/validate_native_linear.py": "ad810e46fdc1ad3e4d375651db16533a40a238b06e3ac2c98db34a9d5fd77cd7",
+    "third_party/Megakernels/include/controller/instruction_fetch.cuh": "6f97f7cc2c9a1f83cdce385984415f8fdfbb3d3b293f7e585f8fecc4f132ee64",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859"
+  },
+  "library_sha256": "54cf86e1ebc05703a67de716a6a6649115df945bc19a0bcfb7cb9488dcd38e17",
+  "results": [
+    {
+      "label": "one-worker-odd-range",
+      "plan": {
+        "workers": 1,
+        "stream_length": 2,
+        "instructions": 2,
+        "compute_tiles": 5,
+        "largest_tile_range": 3,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "sources": [
+        -1,
+        0
+      ],
+      "replays": 3,
+      "same_native_stages": "bit-exact",
+      "torch_nrmse": 0.0,
+      "counter_check": "exact per row band",
+      "output_sha256": "81ea19f03add84d3d3e03fb0c0627e515df421867a1d2c9e0674b1b6129a4a0f"
+    },
+    {
+      "label": "cross-band",
+      "plan": {
+        "workers": 4,
+        "stream_length": 2,
+        "instructions": 8,
+        "compute_tiles": 14,
+        "largest_tile_range": 2,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "sources": [
+        -1,
+        0
+      ],
+      "replays": 3,
+      "same_native_stages": "bit-exact",
+      "torch_nrmse": 0.0,
+      "counter_check": "exact per row band",
+      "output_sha256": "7133fdf2a3cb7a4421a2be9014389d0a329abe23b8ab7be24e75fc3418fd7255"
+    },
+    {
+      "label": "expert-shaped",
+      "plan": {
+        "workers": 148,
+        "stream_length": 1,
+        "instructions": 72,
+        "compute_tiles": 72,
+        "largest_tile_range": 1,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "sources": [
+        -1,
+        0
+      ],
+      "replays": 3,
+      "same_native_stages": "bit-exact",
+      "torch_nrmse": 0.0,
+      "counter_check": "exact per row band",
+      "output_sha256": "68268fdb5a02dff1af075b89b054fc57a613baaedce28791d2ecd0bef6cb036a"
+    },
+    {
+      "label": "prefix-shaped",
+      "plan": {
+        "workers": 148,
+        "stream_length": 2,
+        "instructions": 244,
+        "compute_tiles": 288,
+        "largest_tile_range": 2,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "sources": [
+        -1,
+        0
+      ],
+      "replays": 3,
+      "same_native_stages": "bit-exact",
+      "torch_nrmse": 0.0,
+      "counter_check": "exact per row band",
+      "output_sha256": "fc735358c137ca00feef1fac739a6d0ea650a0b230f197767f051fb6ce8b0f8d"
+    }
+  ]
+}

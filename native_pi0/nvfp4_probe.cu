@@ -28,6 +28,7 @@ struct Fp4Globals {
     float output_global_scale=1.f;
     int output_gelu=0;
     bool task_from_instruction=false;
+    int round_before_residual=0;
 };
 struct Fp4Matmul {
     static constexpr int opcode=1;
@@ -236,6 +237,9 @@ struct Fp4Matmul {
                             int c=col_base+j*16+2*(lane%4)+((v&2)?8:0);
                             auto pair=values.tiles[i][j].data[v];
                             size_t index=size_t(r)*g.out.cols()+c;
+                            if constexpr(requires{g.round_before_residual;}){
+                                if(g.residual&&g.round_before_residual){pair.x=float(kittens::bf16(pair.x));pair.y=float(kittens::bf16(pair.y));}
+                            }
                             if(g.residual){pair.x+=float(g.residual[index]);pair.y+=float(g.residual[index+1]);}
                             if(g.bias){pair.x+=float(g.bias[c]);pair.y+=float(g.bias[c+1]);}
                             *reinterpret_cast<__nv_bfloat162*>(g.bf16_output+index)=__floats2bfloat162_rn(pair.x,pair.y);

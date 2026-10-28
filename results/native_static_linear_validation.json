@@ -1,0 +1,24 @@
+{
+  "scope": "Native static tile-range matrix programs; not yet complete Pi0",
+  "source_sha256": {
+    "native_pi0/native.cu": "136d9972dfd21b9e31d0050d99f84624d2ae7b053ecf0d445f24130a01fa9bc5",
+    "native_pi0/program.py": "19bff7f243cf893410e5105ddc2ad4d2e6020e914720a4c0b6018f575a9e7a8e",
+    "native_pi0/linear.py": "b8cae35b5ddade61aa90337e08e10ad0490b999ca0fb65957e54b05dcfb442fd",
+    "native_pi0/dense.cu": "c826efc7975e441e09a5ceb69dff208e84d345121149f051d5456f0dda18a9e7",
+    "native_pi0/dense.py": "c663cfb57b9a68e09eddad8ce290c76d03455c45ff529d43ca3df2303e8d82a4",
+    "native_pi0/tcgen_probe.cu": "390b854c4f55bfc3020bbf079e646e4394503329b1977c72d10d2b5a2f5c0d5b",
+    "scripts/validate_native_linear.py": "ad810e46fdc1ad3e4d375651db16533a40a238b06e3ac2c98db34a9d5fd77cd7",
+    "third_party/Megakernels/include/controller/instruction_fetch.cuh": "6f97f7cc2c9a1f83cdce385984415f8fdfbb3d3b293f7e585f8fecc4f132ee64",
+    "third_party/Megakernels/include/megakernel.cuh": "7a67e3da0d02926e439c3d626c258820d718cf29309cfb5cffa5355a7e5d1859"
+  },
+  "library_sha256": "54cf86e1ebc05703a67de716a6a6649115df945bc19a0bcfb7cb9488dcd38e17",
+  "cases": 4,
+  "changed_input_replays": 3,
+  "memcheck_errors": 0,
+  "synccheck_errors": 0,
+  "static_fetch": true,
+  "task_queue": false,
+  "launches_per_forward": 1,
+  "archive_restore": "hash verification and independent restoration passed",
+  "model_acceptance": "Open; complete BF16 Pi0 must be migrated onto these native streams"
+}

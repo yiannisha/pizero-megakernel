@@ -12,7 +12,8 @@ class ResidentDense:
     and residual are BF16, added to FP32 accumulators before final rounding.
     Buffers remain resident and calls on an instance require stream ordering.
     """
-    def __init__(self,library,inputs,weights,*,alpha=1.,bias=None,residual=None,output_dtype=torch.bfloat16,workers=148):
+    def __init__(self,library,inputs,weights,*,alpha=1.,bias=None,residual=None,output_dtype=torch.bfloat16,workers=148,
+                 input_buffer=None,weight_buffer=None,output_buffer=None):
         self.handle=ctypes.c_void_p();self.library=ctypes.CDLL(str(library))
         if inputs.ndim!=2 or weights.ndim!=2 or inputs.shape[1]!=weights.shape[1]:raise ValueError('Inputs and weights must be [M,K] and [N,K]')
         if inputs.dtype not in (torch.bfloat16,torch.float8_e4m3fn) or weights.dtype!=inputs.dtype:raise ValueError('Inputs and weights must share BF16 or FP8 E4M3 dtype')
@@ -24,9 +25,15 @@ class ResidentDense:
         self.device=inputs.device if inputs.is_cuda else torch.device('cuda',torch.cuda.current_device())
         mp=(m+127)//128*128;npad=(n+127)//128*128;kp=(k+63)//64*64
         with torch.cuda.device(self.device):
-            self.a=torch.zeros((mp,kp),dtype=inputs.dtype,device=self.device)
-            self.b=torch.zeros((npad,kp),dtype=inputs.dtype,device=self.device)
-            self.a[:m,:k].copy_(inputs);self.b[:n,:k].copy_(weights)
+            def buffer(value,shape,dtype):
+                if value is None:return torch.zeros(shape,dtype=dtype,device=self.device)
+                if value.device!=self.device or value.dtype!=dtype or tuple(value.shape)!=shape or not value.is_contiguous() or value.data_ptr()%128:
+                    raise ValueError('Bound dense buffers must have padded dimensions, matching dtype/device and 128-byte alignment')
+                return value
+            self.a=buffer(input_buffer,(mp,kp),inputs.dtype)
+            self.b=buffer(weight_buffer,(npad,kp),inputs.dtype)
+            if input_buffer is None:self.a[:m,:k].copy_(inputs)
+            if weight_buffer is None:self.b[:n,:k].copy_(weights)
             self.inputs=self.a[:m,:k];self.weights=self.b[:n,:k]
             self.bias=None;self.residual=None
             if bias is not None:
@@ -37,7 +44,8 @@ class ResidentDense:
                 value=torch.as_tensor(residual,dtype=torch.bfloat16,device=self.device)
                 if tuple(value.shape)!=(m,n):raise ValueError('Residual shape must be [M,N]')
                 self.residual=torch.zeros((mp,npad),dtype=torch.bfloat16,device=self.device);self.residual[:m,:n].copy_(value)
-            self.output=torch.empty((mp,npad),dtype=output_dtype,device=self.device)
+            self.output=(torch.empty((mp,npad),dtype=output_dtype,device=self.device) if output_buffer is None else
+                         buffer(output_buffer,(mp,npad),output_dtype))
             self.logical_output=self.output[:m,:n]
             create=self.library.create_dense
             create.argtypes=[ctypes.POINTER(ctypes.c_void_p)]+[ctypes.c_void_p]*5+[ctypes.c_int]*6+[ctypes.c_float]
