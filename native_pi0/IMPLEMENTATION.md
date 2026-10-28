@@ -203,3 +203,25 @@ The one-view, eight-action, one-step checks in
 `results/native_pi0_model_rope_synccheck.json` also pass the numerical gate;
 Compute Sanitizer reported zero memory and synchronization errors. The
 sanitizer scope is smaller than the complete benchmark configuration.
+
+### Native RoPE and cache producer fusion
+
+The Gemma RoPE range instruction now writes each rotated K and copied V to
+the resident layer cache as it writes the QKV output. Its completion counter
+publishes both outputs. Prefix and expert attention read that cache without
+rewriting it, and the final prefix layer no longer needs a separate cache-copy
+instruction. The rotation is still performed once per token; moving it into
+the attention loader was measured separately and reverted because it repeated
+K rotation across query tiles.
+
+The clean-source isolated run in
+`results/native_pi0_rope_cache_producer_clean.json` preserves the complete
+action NRMSE 0.00889, one CUDA launch, and changed-input replay. It has
+79,884 range instructions over 130,414 tiles and measures 208.71 ms native
+versus 242.77 ms OpenPI eager. The prior native median was 216.15 ms in a
+separate isolated run, so the change produced about a 7.4 ms improvement in
+these measurements. Reduced-case clean-build memcheck and synccheck reports
+are recorded alongside the benchmark.
+`results/native_pi0_rope_cache_producer_prompt16.json` also passes the full
+three-view, 50-action, ten-step gate with a 16-token prompt (action NRMSE
+0.01230), covering the changed cache offset.

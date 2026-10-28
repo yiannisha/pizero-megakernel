@@ -6,8 +6,8 @@
 #include "norm.cu"
 
 struct NativeScalar {
-    const void *a,*b,*c,*d;void* output;
-    int mode,m,n,k,lda,ldb,ldo,p0,p1,input_slot;float alpha;
+    const void *a,*b,*c,*d;void* output,*cache_v;
+    int mode,m,n,k,lda,ldb,ldo,p0,p1,input_slot,cache_base;float alpha;
 };
 struct NativeSpec {int kind;void* handle;NativeScalar scalar;int sources[3];};
 struct NativeData {int base,bands;};
@@ -72,29 +72,6 @@ struct NativeGemmaAttentionOp {
                 nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,static_cast<kittens::bf16*>(a.output),a.out_ld,a.nq,a.nk,a.heads,a.kv_heads,a.scale_log2,a.prefix,a.mask,
                 0,a.nk,nullptr,nullptr,static_cast<kittens::bf16*>(a.cache_k),static_cast<kittens::bf16*>(a.cache_v),a.cache_rows,a.cached_prefix_rows,false);
         native_sync();if(threadIdx.x==0)for(int p=0;p<used;++p)s.finish_page(s.pid(p),4);native_complete(g,s);
-    }};
-};
-struct NativePrefixCacheOp {
-    static constexpr int opcode=16;
-    using controller=megakernel::NoOp<Cfg>::controller;
-    using loader=megakernel::NoOp<Cfg>::loader;
-    using launcher=megakernel::NoOp<Cfg>::launcher;
-    using storer=megakernel::NoOp<Cfg>::storer;
-    struct consumer {static __device__ void run(const NativeModelGlobals& g,State& s){
-        native_wait_inputs(g,s);const auto a=g.attention[s.instruction()[1]];
-        const auto* key=static_cast<const kittens::bf16*>(a.k);
-        const auto* value=static_cast<const kittens::bf16*>(a.v);
-        auto* cache_k=static_cast<kittens::bf16*>(a.cache_k);
-        auto* cache_v=static_cast<kittens::bf16*>(a.cache_v);
-        for(int task=s.instruction()[2];task<s.instruction()[2]+s.instruction()[3];++task){
-            int first=task*64,last=min(first+64,a.nq);
-            for(int i=(first*a.kv_heads*a.hd)+threadIdx.x;i<last*a.kv_heads*a.hd;i+=128){
-                int row=i/(a.kv_heads*a.hd),column=i%(a.kv_heads*a.hd);
-                cache_k[size_t(row)*a.kv_heads*a.hd+column]=key[size_t(row)*a.ldkv+column];
-                cache_v[size_t(row)*a.kv_heads*a.hd+column]=value[size_t(row)*a.ldkv+column];
-            }
-        }
-        native_complete(g,s);
     }};
 };
 struct NativeNormOp {
@@ -167,11 +144,21 @@ template<int Mode> struct NativeTensorOp {
             size_t out=size_t(row)*p.ldo+col;
             if constexpr(Mode==4||Mode==5||Mode==7||Mode==9)static_cast<float*>(p.output)[out]=value;
             else static_cast<kittens::bf16*>(p.output)[out]=kittens::bf16(value);
+            if constexpr(Mode==11){
+                if(row<p.k&&p.d&&p.cache_v){
+                    int key_start=p.p0-p.p1;
+                    size_t cached=size_t(p.cache_base+row)*p.p1;
+                    if(col>=key_start&&col<p.p0)
+                        static_cast<kittens::bf16*>(const_cast<void*>(p.d))[cached+col-key_start]=kittens::bf16(value);
+                    else if(col>=p.p0&&col<p.p0+p.p1)
+                        static_cast<kittens::bf16*>(p.cache_v)[cached+col-p.p0]=kittens::bf16(value);
+                }
+            }
         }
         native_complete(g,s);
     }};
 };
-#define NATIVE_MODEL_KERNEL megakernel::mk<Cfg,NativeModelGlobals,NativeLinearOp,NativeVisionAttentionOp,NativeNormOp,NativeTensorOp<1>,NativeTensorOp<2>,NativeTensorOp<3>,NativeTensorOp<4>,NativeTensorOp<5>,NativeTensorOp<6>,NativeTensorOp<7>,NativeTensorOp<8>,NativeTensorOp<9>,NativeTensorOp<10>,NativeTensorOp<11>,NativeGemmaAttentionOp,NativePrefixCacheOp>
+#define NATIVE_MODEL_KERNEL megakernel::mk<Cfg,NativeModelGlobals,NativeLinearOp,NativeVisionAttentionOp,NativeNormOp,NativeTensorOp<1>,NativeTensorOp<2>,NativeTensorOp<3>,NativeTensorOp<4>,NativeTensorOp<5>,NativeTensorOp<6>,NativeTensorOp<7>,NativeTensorOp<8>,NativeTensorOp<9>,NativeTensorOp<10>,NativeTensorOp<11>,NativeGemmaAttentionOp>
 struct NativeModelContext {
     NativeModelGlobals globals;int workers,device,count;std::vector<void*> owned;unsigned long long epoch=0;
 };
@@ -207,13 +194,13 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
             auto* a=static_cast<AttentionContext*>(spec.handle);if(!a||a->device!=device||a->globals.fp16||a->globals.splits!=1)return cudaErrorInvalidValue;
             attention[stage]=a->globals;const auto& f=a->globals;rows=f.batches*f.nq;width=f.heads*f.hd;
             if(f.nk>4096||(!spec.scalar.p0&&f.hd!=72))return cudaErrorInvalidValue;
-            if(spec.scalar.p1&&(!spec.scalar.p0||f.batches!=1||f.kv_heads!=1||f.hd!=256||!f.cache_k||!f.cache_v||f.cached_prefix_rows))return cudaErrorInvalidValue;
-            tasks[stage]=spec.scalar.p1?(rows+63)/64:f.tasks;opcodes[stage]=spec.scalar.p1?16:(spec.scalar.p0?15:2);
+            tasks[stage]=f.tasks;opcodes[stage]=spec.scalar.p0?15:2;
         }else if(spec.kind==2){
             auto* n=static_cast<NormContext*>(spec.handle);if(!n||n->device!=device||n->globals.format!=16)return cudaErrorInvalidValue;
             norms[stage]=n->globals;rows=n->globals.rows;width=n->globals.width;tasks[stage]=(rows+7)/8;opcodes[stage]=3;
         }else if(spec.kind==3){
             const auto& p=spec.scalar;if(p.mode<1||p.mode>11||p.m<1||p.n<1||!p.output)return cudaErrorInvalidValue;
+            if(p.mode==11&&(bool(p.d)!=bool(p.cache_v)||p.cache_base<0))return cudaErrorInvalidValue;
             rows=p.m;width=p.n;int tile=p.mode==5||p.mode==6?128:16384;tasks[stage]=(int64_t(rows)*width+tile-1)/tile;opcodes[stage]=p.mode+3;
         }else return cudaErrorInvalidValue;
         if(tasks[stage]<1)return cudaErrorInvalidValue;
@@ -233,7 +220,6 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
             if(spec.kind==0)add((t/matrices[stage].matrix.n_tiles)*128,std::min(rows-1,(t/matrices[stage].matrix.n_tiles)*128+127));
             else if(spec.kind==2)add(t*8,std::min(rows-1,t*8+7));
             else if(spec.kind==3){int tile=spec.scalar.mode==5||spec.scalar.mode==6?128:16384;add(int(int64_t(t)*tile/width),int(std::min(int64_t(rows)*width-1,int64_t(t+1)*tile-1)/width));}
-            else if(spec.scalar.p1)add(t*64,std::min(rows-1,t*64+63));
             else{
                 const auto& a=attention[stage];int per=(a.nq+63)/64,row=(t%per)*64,batch=t/(per*a.heads);add(batch*a.nq+row,batch*a.nq+std::min(row+63,a.nq-1));
             }

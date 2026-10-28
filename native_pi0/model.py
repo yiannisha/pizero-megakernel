@@ -19,8 +19,8 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 class Scalar(C.Structure):
-    _fields_=[(n,C.c_void_p) for n in ('a','b','c','d','output')]+[(n,C.c_int) for n in
-        ('mode','m','n','k','lda','ldb','ldo','p0','p1','input_slot')]+[('alpha',C.c_float)]
+    _fields_=[(n,C.c_void_p) for n in ('a','b','c','d','output','cache_v')]+[(n,C.c_int) for n in
+        ('mode','m','n','k','lda','ldb','ldo','p0','p1','input_slot','cache_base')]+[('alpha',C.c_float)]
 
 
 class Stage(C.Structure):
@@ -32,7 +32,7 @@ def padded(n,a):return (n+a-1)//a*a
 
 
 class NativePi0:
-    """Experimental reference π0; full-model numerical acceptance is still open.
+    """BF16 π0 reference with same-weight random-model numerical acceptance.
 
     Batch one, resident NHWC images and fixed input shapes.
 
@@ -88,15 +88,17 @@ class NativePi0:
         if len(parents)>3:raise ValueError('Too many native tensor sources')
         index=len(self.stages);spec=scalar or Scalar()
         self.stages.append(Stage(kind,handle,spec,(C.c_int*3)(*(parents+[-1]*(3-len(parents))))));self.stage_tasks.append(tasks)
-        self.opcodes.append(1 if kind==0 else (16 if spec.p1 else 15 if spec.p0 else 2) if kind==1 else 3 if kind==2 else spec.mode+3)
+        self.opcodes.append(1 if kind==0 else (15 if spec.p0 else 2) if kind==1 else 3 if kind==2 else spec.mode+3)
         self.stage_cost.append(padded(max(cost,64),64))
         self.producers[output.untyped_storage().data_ptr()]=index
         return index
 
-    def scalar(self,mode,shape,*,a=None,b=None,c=None,d=None,dtype=torch.bfloat16,k=0,lda=None,ldb=None,p0=0,p1=0,slot=0,alpha=1.):
+    def scalar(self,mode,shape,*,a=None,b=None,c=None,d=None,dtype=torch.bfloat16,k=0,lda=None,ldb=None,p0=0,p1=0,slot=0,alpha=1.,kv_cache=None,cache_base=0):
         m,n=shape;out=self.tensor(shape,dtype)
-        spec=Scalar(*[pointer(t) for t in (a,b,c,d,out)],mode,m,n,k,lda or (a.shape[-1] if a is not None else n),
-                    ldb or (b.shape[-1] if b is not None else n),n,p0,p1,slot,float(alpha))
+        if kv_cache is not None and (mode!=11 or d is not None or len(kv_cache)!=2):raise ValueError('RoPE cache requires K/V buffers')
+        cache_k,cache_v=kv_cache if kv_cache is not None else (None,None)
+        spec=Scalar(*[pointer(t) for t in (a,b,c,cache_k if kv_cache is not None else d,out,cache_v)],mode,m,n,k,lda or (a.shape[-1] if a is not None else n),
+                    ldb or (b.shape[-1] if b is not None else n),n,p0,p1,slot,cache_base,float(alpha))
         tile=128 if mode in (5,6) else 16384;self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c),cost=k if mode==5 else 588 if mode==6 else 64);return out
 
     def dense(self,x,weight,bias=None,*,rows=None,residual=None):
@@ -148,20 +150,20 @@ class NativePi0:
         if debug:
             self.landmarks[tag+'q']=q.reshape(logical,-1);self.landmarks[tag+'k']=k.reshape(logical,-1);self.landmarks[tag+'v']=v.reshape(logical,-1)
         if rope is not None:
-            qkv=self.scalar(11,qkv.shape,a=qkv,b=rope[0],c=rope[1],k=batches*rows,p0=key_offset+hk*hd,p1=hd)
+            qkv=self.scalar(11,qkv.shape,a=qkv,b=rope[0],c=rope[1],k=batches*rows,p0=key_offset+hk*hd,p1=hd,kv_cache=cache,cache_base=prefix)
             k=qkv[:batches*rows,key_offset:key_offset+hk*hd].view(batches,rows,hk,hd)
             v=qkv[:batches*rows,key_offset+hk*hd:key_offset+2*hk*hd].view(batches,rows,hk,hd)
             q=k if cache_only else qkv[:batches*rows,:heads*hd].view(batches,rows,heads,hd)
+        cache_key=None if cache is None else cache[0].untyped_storage().data_ptr()
+        if cache_key is not None and not prefix:self.cache_producers[cache_key]=self.producers[qkv.untyped_storage().data_ptr()]
+        if cache_only:return x
         output=self.tensor((x.shape[0],(hk if cache_only else heads)*hd))
         op=self.owners.enter_context(ResidentAttention(self.library_path,q,k,v,workers=self.workers,
             splits=1,kv_cache=cache,cached_prefix_rows=prefix,
             output=output[:batches*rows].view(batches,rows,hk if cache_only else heads,hd)))
-        cache_key=None if cache is None else cache[0].untyped_storage().data_ptr()
-        index=self.add(1,op.handle.value,((batches*rows+63)//64 if cache_only else batches*heads*((rows+63)//64)),
-            Scalar(alpha=op.scale,p0=int(rms),p1=int(cache_only)),
+        self.add(1,op.handle.value,batches*heads*((rows+63)//64),
+            Scalar(alpha=op.scale,p0=int(rms)),
             output=output,inputs=(qkv,),cache_source=self.cache_producers.get(cache_key,-1) if prefix else -1,cost=(rows+prefix)*hd)
-        if cache_key is not None and not prefix:self.cache_producers[cache_key]=index
-        if cache_only:return x
         if debug:self.landmarks[tag+'attention']=output[:logical]
         y=self.dense(output,att.o_proj.weight if rms else att.out_proj.weight,att.o_proj.bias if rms else att.out_proj.bias,rows=batches*rows,residual=residual)
         x=y

@@ -48,14 +48,13 @@ scheduling/runtime boundary.
 
 ## Current gap
 
-`model.cu` now executes the entire BF16 π0 reference in one static VM launch,
-but `results/native_pi0_static_flash.json` fails action parity (3.47% NRMSE)
-and takes 238.5 ms versus 240.3 ms eager OpenPI for the same random-weight
-three-view/50-action test. It has 91,654 native range instructions over
-146,712 tiles. Fuse before measuring precision variants; a static fetch path
-alone does not remove repeated norm, pointwise, metadata and skinny GEMM work.
-The next implementation gate is same-weight BF16 numerical parity, followed
-by source-backed fusion and calibrated precision porting above.
+`model.cu` now executes the entire BF16 π0 reference in one static VM launch.
+`results/native_pi0_model_rope_benchmark.json` passes the same-weight
+random-model action gate at 0.00889 NRMSE and measures 216.15 ms versus
+249.94 ms eager OpenPI for three views, 50 actions and ten denoising steps.
+The program has 79,896 native range instructions over 130,426 tiles. The
+remaining gates include checkpoint fidelity, calibrated precision, the π0.5
+model variant, and matched compiled/graph/realtime-vla/FlashRT comparisons.
 
 ## Realtime-VLA fusion audit (pinned eb46c8d)
 
@@ -78,8 +77,15 @@ matched baseline.
 | Last prefix layer writes only K/V needed by the expert; encoder/decoder overlap via streams and per-layer events | `pi0_infer.py::transformer_encoder`, `record_run`, `transformer_decoder` | Prune unused last-layer prefix Q/O/FFN work and express prefix-cache readiness as direct data counters inside the single VM. The native scheduler can overlap independent work without copying the CUDA-stream design. |
 | Grouped small-row decoder GEMMs and fused down-projection residual | `pi0_infer.py::matmul_grouped_res`, `matmul_k_4096_1024_res` | Adapt tile shape and K partition to SM100, then keep the residual add in the native matrix epilogue. The exact SM120 tile parameters and PDL launches are not portable. |
 
-These are concrete candidates, not measured speedups for our implementation.
-The immediate next step remains the failing BF16 full-model accuracy gate;
-then the action/time and GEMM epilogue fusions should reduce the current
-82,402 range instructions and 218.9 ms complete-forward time after the first
-residual-GEMM epilogue fusion.
+The residual GEMM epilogues, offline action/time fold and last-prefix K/V
+pruning are now in the native path. A trial that moved Gemma RoPE from its
+once-per-token native producer into the attention loader kept the complete
+action NRMSE exactly at 0.00889 and removed 198 separate RoPE stages, but
+isolated native median increased from 216.15 to 224.32 ms. Attention revisits
+K for multiple query tiles, so that placement repeats the rotation. The trial
+was reverted. The accepted native RoPE producer now writes each rotated K
+and V cache row once before attention reads it. The clean isolated result in
+`results/native_pi0_rope_cache_producer_clean.json` is 208.71 ms native with
+the same 0.00889 action NRMSE, compared with 216.15 ms for the preceding
+native path in a separate isolated run. QKV projection and RoPE remain
+distinct native instructions; projection-epilogue fusion remains open.

@@ -35,7 +35,6 @@ __device__ void eager_attend(StateT& state,int task,const T* q,const T* k,const 
     const int col0 = h * HD;
     const bool rope = qcos != nullptr;
     const bool key_rope=kcos!=nullptr;
-    const bool cache_writer=cache_k && tile==0 && h%(heads/kv_heads)==0;
     const int raw_key_rows=NK-cached_prefix_rows;
     const T* qbh = q_bias ? q_bias + col0 : nullptr;
     const T* kbh = k_bias ? k_bias + kh*HD : nullptr;
@@ -126,16 +125,7 @@ __device__ void eager_attend(StateT& state,int task,const T* q,const T* k,const 
             V packed_lo=pack_vec<T,VW>(lo),packed_hi=pack_vec<T,VW>(hi);
             *reinterpret_cast<V*>(&ks[r][c])=packed_lo;
             *reinterpret_cast<V*>(&ks[r][c+H2])=packed_hi;
-            size_t cache_offset=(size_t(b)*cache_rows+key)*(kv_heads*HD)+kh*HD+c;
-            if(cache_writer&&valid&&!cached){
-                *reinterpret_cast<V*>(cache_k+cache_offset)=packed_lo;
-                *reinterpret_cast<V*>(cache_k+cache_offset+H2)=packed_hi;
-            }
             finish_unit<T, HD, VW>(rv[u],cached?nullptr:vbh,c,false,valid,lo,hi);
-            if(cache_writer&&valid&&!cached){
-                *reinterpret_cast<V*>(cache_v+cache_offset)=pack_vec<T,VW>(lo);
-                *reinterpret_cast<V*>(cache_v+cache_offset+H2)=pack_vec<T,VW>(hi);
-            }
 #pragma unroll
             for (int j = 0; j < VW; ++j) {
                 vt[c + j][r] = T(lo[j]);
