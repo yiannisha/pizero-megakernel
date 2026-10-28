@@ -81,4 +81,5 @@ matched baseline.
 These are concrete candidates, not measured speedups for our implementation.
 The immediate next step remains the failing BF16 full-model accuracy gate;
 then the action/time and GEMM epilogue fusions should reduce the current
-91,654 range instructions and 238 ms complete-forward time.
+82,402 range instructions and 218.9 ms complete-forward time after the first
+residual-GEMM epilogue fusion.

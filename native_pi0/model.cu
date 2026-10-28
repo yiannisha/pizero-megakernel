@@ -197,6 +197,10 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
         if(spec.kind==0){
             auto& m=matrices[stage];m.output_counter=data[stage].base;int parent=spec.sources[0];
             if(parent>=0){if(data[parent].bands!=data[stage].bands)return cudaErrorInvalidValue;m.input_counter=data[parent].base;}
+            int residual=spec.sources[1];if(residual>=0&&m.matrix.residual){
+                if(data[residual].bands!=data[stage].bands)return cudaErrorInvalidValue;
+                m.residual_counter=data[residual].base;
+            }
         }
         offsets[stage]=int(contribution_offsets.size()-1);seen[stage].resize(tasks[stage],0);
         for(int t=0;t<tasks[stage];++t){
@@ -224,6 +228,7 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
     auto upload=[&](const auto& values){using T=typename std::decay_t<decltype(values)>::value_type;auto* p=static_cast<T*>(alloc(values.size()*sizeof(T)));if(error==cudaSuccess)error=cudaMemcpy(p,values.data(),values.size()*sizeof(T),cudaMemcpyHostToDevice);return p;};
     auto* de=upload(expected);
     for(int i=0;i<count;++i)if(specs[i].kind==0&&matrices[i].input_counter>=0)matrices[i].input_expected=de+matrices[i].input_counter;
+    for(int i=0;i<count;++i)if(specs[i].kind==0&&matrices[i].residual_counter>=0)matrices[i].residual_expected=de+matrices[i].residual_counter;
     NativeModelGlobals g{};g.matrices=upload(matrices);g.attention=upload(attention);g.norms=upload(norms);g.scalar=upload(scalar);g.data=upload(data);g.sources=upload(sources);g.expected=de;
     g.task_offsets=upload(offsets);g.contribution_offsets=upload(contribution_offsets);g.contributions=upload(contributions);
     g.ready=static_cast<unsigned long long*>(alloc(expected.size()*8));if(error==cudaSuccess)error=cudaMemset(g.ready,0,expected.size()*8);

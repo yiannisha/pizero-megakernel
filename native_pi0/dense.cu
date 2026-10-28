@@ -65,12 +65,16 @@ template<class Element> struct DenseOp {
                         int r=row_base+warp*32+i*16+lane/4+half*8,c=col_base+j*16+2*(lane%4);
                         size_t index=size_t(r)*n+c;
                         auto lo=values.tiles[i][j].data[half],hi=values.tiles[i][j].data[half+2];
+                        if(g.residual&&g.round_before_residual&&g.bias){
+                            lo.x+=float(g.bias[c]);lo.y+=float(g.bias[c+1]);
+                            hi.x+=float(g.bias[c+8]);hi.y+=float(g.bias[c+9]);
+                        }
                         if(g.residual&&g.round_before_residual){
                             lo.x=float(kittens::bf16(lo.x));lo.y=float(kittens::bf16(lo.y));
                             hi.x=float(kittens::bf16(hi.x));hi.y=float(kittens::bf16(hi.y));
                         }
                         if(g.residual){lo.x+=float(g.residual[index]);lo.y+=float(g.residual[index+1]);hi.x+=float(g.residual[index+8]);hi.y+=float(g.residual[index+9]);}
-                        if(g.bias){lo.x+=float(g.bias[c]);lo.y+=float(g.bias[c+1]);hi.x+=float(g.bias[c+8]);hi.y+=float(g.bias[c+9]);}
+                        if(g.bias&&!(g.residual&&g.round_before_residual)){lo.x+=float(g.bias[c]);lo.y+=float(g.bias[c+1]);hi.x+=float(g.bias[c+8]);hi.y+=float(g.bias[c+9]);}
                         if(g.bf16_output){
                             *reinterpret_cast<__nv_bfloat162*>(g.bf16_output+index)=__floats2bfloat162_rn(lo.x,lo.y);
                             *reinterpret_cast<__nv_bfloat162*>(g.bf16_output+index+8)=__floats2bfloat162_rn(hi.x,hi.y);
@@ -144,4 +148,13 @@ extern "C" int destroy_dense(void* handle){
     if(!handle)return cudaSuccess;auto* base=static_cast<DenseContextBase*>(handle);int device;auto error=cudaGetDevice(&device);
     if(error!=cudaSuccess)return error;if(device!=base->device)return cudaErrorInvalidDevice;
     return base->fp8?destroy_dense_impl<kittens::fp8e4m3>(base):destroy_dense_impl<kittens::bf16>(base);
+}
+
+extern "C" int configure_dense_round_before_residual(void* handle){
+    if(!handle)return cudaErrorInvalidValue;
+    auto* base=static_cast<DenseContextBase*>(handle);
+    if(base->fp8)return cudaErrorInvalidValue;
+    auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
+    if(!c->globals.residual)return cudaErrorInvalidValue;
+    c->globals.round_before_residual=1;return cudaSuccess;
 }

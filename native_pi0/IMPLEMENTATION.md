@@ -100,3 +100,40 @@ The later tensor-core Gemma attention path uses two QK passes to preserve
 eager BF16 score/scale and normalized-probability rounding. The latest vision
 trial uses descending key blocks. `results/native_pi0_static_flash.json`
 records the current full-model attempt; numerical acceptance remains open.
+
+## Integration target clarified
+
+The completed backend must incorporate the transferable FlashRT and
+realtime-vla optimizations **inside this single native VM forward**, not
+merely benchmark or document them. Setup-time weight folding and calibration
+feed native operators; the inference path keeps one original VM launch.
+The π0 implementation needs fused GEMM epilogues, action/time projection
+folding, QKV/RoPE/cache writes, RMS-factor staging, GeGLU, attention, and
+resident cache dependencies. Calibrated FP8 and selected SM100 NVFP4 sites
+follow full-model numerical gates. π0.5's AdaRMSNorm and style conditioning
+require a separate native model variant; they are not π0 operations.
+
+Fused BF16 residual GEMM epilogues are the first ported change. They must
+preserve the standalone BF16 projection rounding before the residual add.
+Any precision or operator fusion is accepted only after same-weight full-model
+parity and isolated latency checks; the current reference still fails parity.
+
+### First integrated fusion: residual GEMM epilogues
+
+The full π0 path now combines attention output and FFN down projections with
+BF16 residual addition inside `NativeLinearOp`'s epilogue. The host binds the
+resident residual buffer; the native loader acquires its producer row-band
+counter before reading it. For biased vision projections, the epilogue adds
+bias, rounds the projection to BF16, then adds the residual, preserving the
+separate operator's rounding boundary. This removes 450 pointwise operations
+and 9,252 range instructions from the three-view/50-action/10-step program.
+`results/native_pi0_fused_residual.json` measured 218.9 ms versus 238.5 ms
+for the prior static reference under separate isolated runs. The same-weight
+action NRMSE remains 0.03466, above the acceptance threshold; the timing is
+therefore engineering evidence, not an accepted model result.
+
+The one-view, eight-action, one-step fused program completed both
+Compute Sanitizer memcheck and synccheck with zero reported errors. These
+runs still exit nonzero on the independent action accuracy gate (2.03% NRMSE);
+CUPTI tracing is disabled under the sanitizers because their CUDA subscribers
+conflict. The separate full-shape run confirms one VM launch.

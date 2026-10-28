@@ -13,7 +13,7 @@ class ResidentDense:
     Buffers remain resident and calls on an instance require stream ordering.
     """
     def __init__(self,library,inputs,weights,*,alpha=1.,bias=None,residual=None,output_dtype=torch.bfloat16,workers=148,
-                 input_buffer=None,weight_buffer=None,output_buffer=None):
+                 input_buffer=None,weight_buffer=None,output_buffer=None,residual_buffer=None,round_before_residual=False):
         self.handle=ctypes.c_void_p();self.library=ctypes.CDLL(str(library))
         if inputs.ndim!=2 or weights.ndim!=2 or inputs.shape[1]!=weights.shape[1]:raise ValueError('Inputs and weights must be [M,K] and [N,K]')
         if inputs.dtype not in (torch.bfloat16,torch.float8_e4m3fn) or weights.dtype!=inputs.dtype:raise ValueError('Inputs and weights must share BF16 or FP8 E4M3 dtype')
@@ -40,10 +40,12 @@ class ResidentDense:
                 value=torch.as_tensor(bias,dtype=torch.bfloat16,device=self.device)
                 if tuple(value.shape)!=(n,):raise ValueError('Bias shape must be [N]')
                 self.bias=torch.zeros(npad,dtype=torch.bfloat16,device=self.device);self.bias[:n].copy_(value)
-            if residual is not None:
+            if residual_buffer is not None and residual is None:raise ValueError('Residual buffer requires residual')
+            if residual is not None and residual_buffer is None:
                 value=torch.as_tensor(residual,dtype=torch.bfloat16,device=self.device)
                 if tuple(value.shape)!=(m,n):raise ValueError('Residual shape must be [M,N]')
                 self.residual=torch.zeros((mp,npad),dtype=torch.bfloat16,device=self.device);self.residual[:m,:n].copy_(value)
+            if residual_buffer is not None:self.residual=buffer(residual_buffer,(mp,npad),torch.bfloat16)
             self.output=(torch.empty((mp,npad),dtype=output_dtype,device=self.device) if output_buffer is None else
                          buffer(output_buffer,(mp,npad),output_dtype))
             self.logical_output=self.output[:m,:n]
@@ -53,6 +55,12 @@ class ResidentDense:
             error=create(ctypes.byref(self.handle),*[None if x is None else x.data_ptr() for x in (self.a,self.b,self.output,self.bias,self.residual)],
                 mp,npad,kp,workers,int(inputs.dtype==torch.float8_e4m3fn),int(output_dtype==torch.bfloat16),self.alpha)
         if error:raise RuntimeError(f'Native dense setup CUDA error {error}')
+        if round_before_residual:
+            if self.residual is None or inputs.dtype!=torch.bfloat16:raise ValueError('BF16 residual required')
+            configure=self.library.configure_dense_round_before_residual
+            configure.argtypes=[ctypes.c_void_p];configure.restype=ctypes.c_int
+            error=configure(self.handle)
+            if error:raise RuntimeError(f'Native dense residual rounding error {error}')
         self.launch=self.library.launch_dense;self.launch.argtypes=[ctypes.c_void_p]*2;self.launch.restype=ctypes.c_int
         self.destroy=self.library.destroy_dense;self.destroy.argtypes=[ctypes.c_void_p];self.destroy.restype=ctypes.c_int
 

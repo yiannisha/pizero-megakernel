@@ -98,15 +98,16 @@ class NativePi0:
                     ldb or (b.shape[-1] if b is not None else n),n,p0,p1,slot,float(alpha))
         tile=128 if mode in (5,6) else 16384;self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c),cost=k if mode==5 else 588 if mode==6 else 64);return out
 
-    def dense(self,x,weight,bias=None,*,rows=None):
+    def dense(self,x,weight,bias=None,*,rows=None,residual=None):
         rows=rows or x.shape[0];n,k=weight.shape;mp=padded(rows,128);kp=padded(k,64);npad=padded(n,128)
         if x.shape!=(mp,kp) or x.dtype!=torch.bfloat16:raise ValueError(('Dense layout',x.shape,(mp,kp),x.dtype))
         key=(weight.data_ptr(),n,k)
         if key not in self.weight_buffers:
             w=self.tensor((npad,kp));w[:n,:k].copy_(weight);self.weight_buffers[key]=w
         op=self.owners.enter_context(ResidentDense(self.library_path,x[:rows,:k],weight,bias=bias,workers=self.workers,
-            input_buffer=x,weight_buffer=self.weight_buffers[key]))
-        self.add(0,op.handle.value,(mp//128)*(npad//128),output=op.output,inputs=(x,),cost=kp);return op.output
+            input_buffer=x,weight_buffer=self.weight_buffers[key],residual=residual,
+            residual_buffer=residual,round_before_residual=residual is not None))
+        self.add(0,op.handle.value,(mp//128)*(npad//128),output=op.output,inputs=(x,residual),cost=kp);return op.output
 
     def norm(self,x,module,*,rms):
         gamma=module.weight.float()+(1. if rms else 0.);beta=None if rms else module.bias.float()
@@ -156,9 +157,8 @@ class NativePi0:
             output=output,inputs=(qkv,),cache_source=self.cache_producers.get(cache_key,-1) if prefix else -1,cost=(rows+prefix)*hd)
         if cache_key is not None and not prefix:self.cache_producers[cache_key]=index
         if debug:self.landmarks[tag+'attention']=output[:logical]
-        y=self.dense(output,att.o_proj.weight if rms else att.out_proj.weight,att.o_proj.bias if rms else att.out_proj.bias,rows=batches*rows)
-        if debug:self.landmarks[tag+'o']=y[:logical]
-        x=self.scalar(1,x.shape,a=y,b=residual)
+        y=self.dense(output,att.o_proj.weight if rms else att.out_proj.weight,att.o_proj.bias if rms else att.out_proj.bias,rows=batches*rows,residual=residual)
+        x=y
         if debug:self.landmarks[tag+'residual1']=x[:logical]
         y=self.norm(x,layer.post_attention_layernorm if rms else layer.layer_norm2,rms=rms)
         if debug:self.landmarks[tag+'norm2']=y[:logical]
@@ -167,16 +167,14 @@ class NativePi0:
             y=self.dense(y,weights,rows=batches*rows)
             y=self.scalar(3,(x.shape[0],weights.shape[0]//2),a=y)
             if debug:self.landmarks[tag+'activation']=y[:logical]
-            y=self.dense(y,layer.mlp.down_proj.weight,rows=batches*rows)
-            if debug:self.landmarks[tag+'down']=y[:logical]
+            y=self.dense(y,layer.mlp.down_proj.weight,rows=batches*rows,residual=x)
         else:
             y=self.dense(y,layer.mlp.fc1.weight,layer.mlp.fc1.bias,rows=batches*rows)
             if debug:self.landmarks[tag+'fc1']=y[:logical,:layer.mlp.fc1.out_features]
             y=self.scalar(2,y.shape,a=y,p0=layer.mlp.fc1.out_features)
             if debug:self.landmarks[tag+'activation']=y[:logical,:layer.mlp.fc1.out_features]
-            y=self.dense(y,layer.mlp.fc2.weight,layer.mlp.fc2.bias,rows=batches*rows)
-            if debug:self.landmarks[tag+'down']=y[:logical]
-        x=self.scalar(1,x.shape,a=y,b=x);self.landmarks[name]=x[:batches*rows];return x
+            y=self.dense(y,layer.mlp.fc2.weight,layer.mlp.fc2.bias,rows=batches*rows,residual=x)
+        x=y;self.landmarks[name]=x[:batches*rows];return x
 
     def _build(self):
         pg=self.model.paligemma_with_expert;vision=pg.paligemma.vision_tower.vision_model

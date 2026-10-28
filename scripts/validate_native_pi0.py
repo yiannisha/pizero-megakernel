@@ -1,5 +1,6 @@
 """Run the complete native reference against the same pinned OpenPI model."""
 import argparse
+from contextlib import nullcontext
 import hashlib
 import math
 import subprocess
@@ -27,7 +28,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--views',type=int,default=3);p.add_argument('--chunk',type=int,default=50)
     p.add_argument('--steps',type=int,default=10);p.add_argument('--prompt',type=int,default=0)
     p.add_argument('--library',type=Path,default=Path('/tmp/pi0_native_model.so'));p.add_argument('--report',type=Path)
-    p.add_argument('--benchmark',action='store_true');p.add_argument('--diagnose-attention',action='store_true')
+    p.add_argument('--benchmark',action='store_true');p.add_argument('--diagnose-attention',action='store_true');p.add_argument('--skip-trace',action='store_true')
     args=p.parse_args();torch.manual_seed(101);torch.set_num_threads(8)
     source_paths=['native_pi0/model_attention.cuh','native_pi0/model.cu','native_pi0/model.py','native_pi0/native.cu','native_pi0/program.py','native_pi0/attention.cu','native_pi0/dense.cu','native_pi0/norm.cu','native_pi0/tcgen_probe.cu','scripts/validate_native_pi0.py']
     hashes={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_paths}
@@ -93,9 +94,9 @@ def main():
     print('Building complete native π0 program',flush=True);start=time.perf_counter()
     with NativePi0.from_model(model,num_views=args.views,prompt_len=args.prompt,chunk_size=args.chunk,flow_steps=args.steps,library=args.library) as native:
         print('Native setup seconds',time.perf_counter()-start,flush=True)
-        with LaunchTrace(args.library) as trace:
+        with (nullcontext(None) if args.skip_trace else LaunchTrace(args.library)) as trace:
             actual=native.forward(images,state,noise,tokens);torch.cuda.synchronize()
-        assert trace.count==1,trace.count
+        if trace is not None:assert trace.count==1,trace.count
         errors={}
         for name,value in native.landmarks.items():
             if name.startswith('actions.'):continue
@@ -106,14 +107,14 @@ def main():
             expected=expected.reshape(-1,expected.shape[-1]);value=value.reshape(-1,value.shape[-1])
             errors[name]=nrmse(value,expected.to(value.dtype))
             if name=='patch' or name.startswith(('debug.','visiondebug.')) or name.endswith('.0') or name.endswith('.17') or name.endswith('.26'):print(name,errors[name],flush=True)
-        error=nrmse(actual,gold);print('COMPLETE π0 native/eager action NRMSE',error,'one launch',trace.count,flush=True)
+        error=nrmse(actual,gold);print('COMPLETE π0 native/eager action NRMSE',error,'launch trace',None if trace is None else trace.count,flush=True)
         scale=gold.float().square().mean().sqrt().clamp_min(1e-12)
         normalized_max=float((actual-gold).abs().max()/scale)
         cosine=float(torch.nn.functional.cosine_similarity(actual.float().flatten(),gold.float().flatten(),dim=0))
         limits={'nrmse':2*torch.finfo(torch.bfloat16).eps,'normalized_max_abs':8*torch.finfo(torch.bfloat16).eps,'cosine_min':.999}
         passed=error<=limits['nrmse'] and normalized_max<=limits['normalized_max_abs'] and cosine>=limits['cosine_min']
         report={'views':args.views,'chunk':args.chunk,'flow_steps':args.steps,'prompt_len':args.prompt,
-            'cuda_launch_count':trace.count,'kernel_symbol':trace.symbol,'action_nrmse':error,'landmark_nrmse':errors,
+            'cuda_launch_count':None if trace is None else trace.count,'kernel_symbol':None if trace is None else trace.symbol,'action_nrmse':error,'landmark_nrmse':errors,
             'normalized_max_abs':normalized_max,'cosine':cosine,'numerical_limits':limits,'numerical_gate_passed':passed,
             'source_sha256':hashes,'library_sha256':library_hash,'native_program':native.plan,'native_stages':len(native.stages),'native_tasks':native.plan['compute_tiles'],'precision':native.precision_policy,
             'same_weights':True,'scope':'Complete π0 including vision, prefix, state/action/time heads and all Euler steps; random initialized actual OpenPI weights'}

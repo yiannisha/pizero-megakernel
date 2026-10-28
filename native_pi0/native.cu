@@ -17,6 +17,7 @@ struct NativeMatrix {
     DenseGlobals<kittens::bf16> matrix;
     int input_counter,output_counter,input_tiles;
     const int* input_expected=nullptr;
+    int residual_counter=-1;const int* residual_expected=nullptr;
 };
 struct NativeGlobals {
     static constexpr bool DYNAMIC_INSTRUCTIONS=false;
@@ -60,6 +61,10 @@ struct NativeLinearOp {
                 if(band!=last_band&&st.input_counter>=0){
                     auto expected=g.epoch*(st.input_expected?st.input_expected[band]:st.input_tiles);
                     while(native_acquire(g.ready+st.input_counter+band)<expected)__nanosleep(20);
+                }
+                if(band!=last_band&&st.residual_counter>=0){
+                    auto expected=g.epoch*st.residual_expected[band];
+                    while(native_acquire(g.ready+st.residual_counter+band)<expected)__nanosleep(20);
                 }
                 last_band=band;
                 for(int k=0;k<iterations;++k){
