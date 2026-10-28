@@ -56,11 +56,12 @@ class NativePi0:
     @classmethod
     def from_model(cls,model,**kwargs):return cls(model,**kwargs)
 
-    def __init__(self,model,*,num_views=3,prompt_len=0,chunk_size=50,flow_steps=10,precision='auto',library=None,workers=148):
+    def __init__(self,model,*,num_views=3,prompt_len=0,chunk_size=50,flow_steps=10,precision='auto',library=None,workers=148,
+                 fuse_vision_gelu=True,skinny_expert=True,fuse_qkv_rope=True):
         if model.config.pi05 or precision not in ('auto','bf16'):raise ValueError('Reference path supports ordinary π0 with BF16 transformers')
         if num_views not in (1,2,3) or prompt_len<0 or chunk_size<1 or flow_steps<1:raise ValueError('Invalid fixed inference dimensions')
         self.model=model;self.num_views=num_views;self.prompt_len=prompt_len;self.chunk_size=chunk_size;self.flow_steps=flow_steps
-        self.precision_policy='bf16_reference';self.workers=workers;self.device=next(model.parameters()).device
+        self.precision_policy='bf16_reference';self.workers=workers;self.fuse_vision_gelu=fuse_vision_gelu;self.skinny_expert=skinny_expert;self.fuse_qkv_rope=fuse_qkv_rope;self.device=next(model.parameters()).device
         if self.device.type!='cuda':raise ValueError('Supply a CUDA OpenPI model')
         self.owners=ExitStack();self.buffers=[];self.weight_buffers={};self.stages=[];self.stage_tasks=[];self.landmarks={};self.handle=C.c_void_p();self.producers={};self.cache_producers={};self.opcodes=[];self.stage_cost=[]
         if library is None:
@@ -93,27 +94,34 @@ class NativePi0:
         self.producers[output.untyped_storage().data_ptr()]=index
         return index
 
-    def scalar(self,mode,shape,*,a=None,b=None,c=None,d=None,dtype=torch.bfloat16,k=0,lda=None,ldb=None,p0=0,p1=0,slot=0,alpha=1.,kv_cache=None,cache_base=0):
+    def scalar(self,mode,shape,*,a=None,b=None,c=None,d=None,dtype=torch.bfloat16,k=0,lda=None,ldb=None,p0=0,p1=0,slot=0,alpha=1.,kv_cache=None,cache_base=0,rms_factor=None):
         m,n=shape;out=self.tensor(shape,dtype)
         if kv_cache is not None and (mode!=11 or d is not None or len(kv_cache)!=2):raise ValueError('RoPE cache requires K/V buffers')
+        if rms_factor is not None and mode!=5:raise ValueError('RMS row factors require FP32 linear output')
         cache_k,cache_v=kv_cache if kv_cache is not None else (None,None)
-        spec=Scalar(*[pointer(t) for t in (a,b,c,cache_k if kv_cache is not None else d,out,cache_v)],mode,m,n,k,lda or (a.shape[-1] if a is not None else n),
+        spec=Scalar(*[pointer(t) for t in (a,b,c,cache_k if kv_cache is not None else d,out,cache_v if kv_cache is not None else rms_factor)],mode,m,n,k,lda or (a.shape[-1] if a is not None else n),
                     ldb or (b.shape[-1] if b is not None else n),n,p0,p1,slot,cache_base,float(alpha))
-        tile=128 if mode in (5,6) else 16384;self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c),cost=k if mode==5 else 588 if mode==6 else 64);return out
+        tile=128 if mode in (5,6) else 16384;self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c,d,rms_factor),cost=k if mode==5 else 588 if mode==6 else 64);return out
 
-    def dense(self,x,weight,bias=None,*,rows=None,residual=None,geglu=False):
+    def dense(self,x,weight,bias=None,*,rows=None,residual=None,geglu=False,gelu=False,rms_factors=None,
+              rope=None,kv_cache=None,rope_key_offset=0,cache_base=0):
         rows=rows or x.shape[0];n,k=weight.shape;mp=padded(rows,128);kp=padded(k,64);npad=padded(n,128)
         if x.shape!=(mp,kp) or x.dtype!=torch.bfloat16:raise ValueError(('Dense layout',x.shape,(mp,kp),x.dtype))
         if geglu and (bias is not None or residual is not None or n%256):raise ValueError('GeGLU requires interleaved gate/up BF16 weights')
+        if gelu and (geglu or residual is not None):raise ValueError('GELU projection cannot also use GeGLU or a residual')
+        skinny=rows<=64 and self.skinny_expert
         key=(weight.data_ptr(),n,k)
         if key not in self.weight_buffers:
             w=self.tensor((npad,kp));w[:n,:k].copy_(weight);self.weight_buffers[key]=w
         compact=self.tensor((mp,npad//2)) if geglu else None
         op=self.owners.enter_context(ResidentDense(self.library_path,x[:rows,:k],weight,bias=bias,workers=self.workers,
             input_buffer=x,weight_buffer=self.weight_buffers[key],residual=residual,
-            residual_buffer=residual,round_before_residual=residual is not None,geglu_output=compact))
+            residual_buffer=residual,round_before_residual=residual is not None,geglu_output=compact,gelu=gelu,rms_factors=rms_factors,skinny=skinny,
+            rope=rope,kv_cache=kv_cache,rope_key_offset=rope_key_offset,cache_base=cache_base))
         output=compact if geglu else op.output
-        self.add(0,op.handle.value,(mp//128)*(npad//128),output=output,inputs=(x,residual),cost=kp);return output
+        stage=self.add(0,op.handle.value,(mp//128)*(npad//128),output=output,inputs=(x,residual,rms_factors),cost=kp)
+        if skinny:self.opcodes[stage]=16
+        return output
 
     def norm(self,x,module,*,rms):
         gamma=module.weight.float()+(1. if rms else 0.);beta=None if rms else module.bias.float()
@@ -121,12 +129,18 @@ class NativePi0:
             epsilon=getattr(module,'eps',getattr(module,'variance_epsilon',1e-6)),workers=self.workers))
         self.add(2,op.handle.value,(x.shape[0]+7)//8,output=op.output,inputs=(x,));return op.output
 
-    def linear32(self,x,module,rows,*,slot=0,bf16=False):
+    def norm_factor(self,x,module):
+        op=self.owners.enter_context(ResidentNorm(self.library_path,x,kind='rms',precision='factor',
+            epsilon=getattr(module,'eps',getattr(module,'variance_epsilon',1e-6)),workers=self.workers))
+        self.add(2,op.handle.value,(x.shape[0]+7)//8,output=op.output,inputs=(x,));return op.output
+
+    def linear32(self,x,module,rows,*,slot=0,bf16=False,euler_from=None,euler_dt=0.,silu=False,rms_factor=None):
         weight=module.weight;key=('f32',weight.data_ptr())
         if key not in self.weight_buffers:
             self.weight_buffers[key]=weight.float().T.contiguous();self.buffers.append(self.weight_buffers[key])
-        return self.scalar(5,(rows,weight.shape[0]),a=x,b=self.weight_buffers[key],c=module.bias,dtype=torch.float32,
-            k=weight.shape[1],lda=weight.shape[1] if x is None else x.shape[-1],p0=int(bf16),slot=slot)
+        return self.scalar(5,(rows,weight.shape[0]),a=x,b=self.weight_buffers[key],c=module.bias,d=euler_from,dtype=torch.float32,
+            k=weight.shape[1],lda=weight.shape[1] if x is None else x.shape[-1],p0=int(bf16),
+            p1=int(euler_from is not None or euler_dt!=0.)+2*int(silu),slot=slot,alpha=euler_dt,rms_factor=rms_factor)
 
     def rope(self,rows,offset,dim,rotary):
         positions=torch.arange(offset,offset+rows,device=self.device)[None]
@@ -138,21 +152,29 @@ class NativePi0:
     def block(self,x,layer,*,rows,batches,heads,hk,hd,rms,cache=None,prefix=0,rope=None,name,cache_only=False):
         debug=name in ('prefix.0','vision.0');tag='debug.' if rms else 'visiondebug.';logical=batches*rows
         if debug:self.landmarks[tag+'input']=x[:logical]
-        residual=x;y=self.norm(x,layer.input_layernorm if rms else layer.layer_norm1,rms=rms)
-        if debug:self.landmarks[tag+'norm1']=y[:logical]
+        residual=x;norm1=layer.input_layernorm if rms else layer.layer_norm1
+        factor=self.norm_factor(x,norm1) if rms else None
+        y=x if rms else self.norm(x,norm1,rms=False)
+        if debug and not rms:self.landmarks[tag+'norm1']=y[:logical]
         att=layer.self_attn
         projections=([att.k_proj,att.v_proj] if cache_only else [att.q_proj,att.k_proj,att.v_proj])
-        qkv_weight=torch.cat([projection.weight for projection in projections]);self.buffers.append(qkv_weight)
+        qkv_weight=torch.cat([projection.weight for projection in projections])
+        if rms:qkv_weight=(qkv_weight.float()*(1.+norm1.weight.float())[None,:]).to(torch.bfloat16)
+        self.buffers.append(qkv_weight)
         qkv_bias=None if projections[0].bias is None else torch.cat([projection.bias for projection in projections])
         if qkv_bias is not None:self.buffers.append(qkv_bias)
-        qkv=self.dense(y,qkv_weight,qkv_bias,rows=batches*rows)
         key_offset=0 if cache_only else heads*hd
+        qkv_tasks=padded(batches*rows,128)//128*(padded(qkv_weight.shape[0],128)//128)
+        fused_qkv_rope=self.fuse_qkv_rope and rope is not None and qkv_tasks<=self.workers
+        qkv=self.dense(y,qkv_weight,qkv_bias,rows=batches*rows,rms_factors=factor,
+                       rope=rope if fused_qkv_rope else None,kv_cache=cache if fused_qkv_rope else None,
+                       rope_key_offset=key_offset,cache_base=prefix)
         k=qkv[:batches*rows,key_offset:key_offset+hk*hd].view(batches,rows,hk,hd)
         v=qkv[:batches*rows,key_offset+hk*hd:key_offset+2*hk*hd].view(batches,rows,hk,hd)
         q=k if cache_only else qkv[:batches*rows,:heads*hd].view(batches,rows,heads,hd)
-        if debug:
+        if debug and not fused_qkv_rope:
             self.landmarks[tag+'q']=q.reshape(logical,-1);self.landmarks[tag+'k']=k.reshape(logical,-1);self.landmarks[tag+'v']=v.reshape(logical,-1)
-        if rope is not None:
+        if rope is not None and not fused_qkv_rope:
             qkv=self.scalar(11,qkv.shape,a=qkv,b=rope[0],c=rope[1],k=batches*rows,p0=key_offset+hk*hd,p1=hd,kv_cache=cache,cache_base=prefix)
             k=qkv[:batches*rows,key_offset:key_offset+hk*hd].view(batches,rows,hk,hd)
             v=qkv[:batches*rows,key_offset+hk*hd:key_offset+2*hk*hd].view(batches,rows,hk,hd)
@@ -171,18 +193,20 @@ class NativePi0:
         y=self.dense(output,att.o_proj.weight if rms else att.out_proj.weight,att.o_proj.bias if rms else att.out_proj.bias,rows=batches*rows,residual=residual)
         x=y
         if debug:self.landmarks[tag+'residual1']=x[:logical]
-        y=self.norm(x,layer.post_attention_layernorm if rms else layer.layer_norm2,rms=rms)
-        if debug:self.landmarks[tag+'norm2']=y[:logical]
+        norm2=layer.post_attention_layernorm if rms else layer.layer_norm2
+        factor=self.norm_factor(x,norm2) if rms else None
+        y=x if rms else self.norm(x,norm2,rms=False)
+        if debug and not rms:self.landmarks[tag+'norm2']=y[:logical]
         if rms:
             weights=torch.stack((layer.mlp.gate_proj.weight,layer.mlp.up_proj.weight),dim=1).reshape(-1,y.shape[-1]).contiguous()
+            weights=(weights.float()*(1.+norm2.weight.float())[None,:]).to(torch.bfloat16)
             self.buffers.append(weights)
-            y=self.dense(y,weights,rows=batches*rows,geglu=True)
+            y=self.dense(y,weights,rows=batches*rows,geglu=True,rms_factors=factor)
             if debug:self.landmarks[tag+'activation']=y[:logical]
             y=self.dense(y,layer.mlp.down_proj.weight,rows=batches*rows,residual=x)
         else:
-            y=self.dense(y,layer.mlp.fc1.weight,layer.mlp.fc1.bias,rows=batches*rows)
-            if debug:self.landmarks[tag+'fc1']=y[:logical,:layer.mlp.fc1.out_features]
-            y=self.scalar(2,y.shape,a=y,p0=layer.mlp.fc1.out_features)
+            y=self.dense(y,layer.mlp.fc1.weight,layer.mlp.fc1.bias,rows=batches*rows,gelu=self.fuse_vision_gelu)
+            if not self.fuse_vision_gelu:y=self.scalar(2,y.shape,a=y,p0=layer.mlp.fc1.out_features)
             if debug:self.landmarks[tag+'activation']=y[:logical,:layer.mlp.fc1.out_features]
             y=self.dense(y,layer.mlp.fc2.weight,layer.mlp.fc2.bias,rows=batches*rows,residual=x)
         x=y;self.landmarks[name]=x[:batches*rows];return x
@@ -215,6 +239,10 @@ class NativePi0:
         fused_weight=first.weight[:,:half].float()@action_in.weight.float()
         action_bias=first.weight[:,:half].float()@action_in.bias.float()
         self.buffers.extend((fused_weight,action_bias))
+        final_norm=pg.gemma_expert.model.norm
+        final_weight=self.model.action_out_proj.weight.float()*(1.+final_norm.weight.float())[None,:]
+        self.buffers.append(final_weight)
+        final_projection=SimpleNamespace(weight=final_weight,bias=self.model.action_out_proj.bias)
         time=np.float32(1.);dt=np.float32(-1./self.flow_steps)
         for step in range(self.flow_steps):
             fraction=torch.linspace(0.,1.,512,device=self.device,dtype=torch.float64)
@@ -223,15 +251,14 @@ class NativePi0:
             step_bias=action_bias+(first.weight[:,half:].float()@time_embedding)+first.bias.float()
             self.buffers.append(step_bias)
             folded=SimpleNamespace(weight=fused_weight,bias=step_bias)
-            y=self.linear32(actions,folded,self.chunk_size,slot=3 if step==0 else 0)
-            y=self.scalar(4,y.shape,a=y,dtype=torch.float32)
+            y=self.linear32(actions,folded,self.chunk_size,slot=3 if step==0 else 0,silu=True)
             y=self.linear32(y,self.model.action_time_mlp_out,self.chunk_size)
             x=self.scalar(8,(padded(suffix_rows,128),1024),a=state,b=y,p0=self.chunk_size)
             for i,layer in enumerate(pg.gemma_expert.model.layers):
                 x=self.block(x,layer,rows=suffix_rows,batches=1,heads=8,hk=1,hd=256,rms=True,cache=self.caches[i],prefix=prefix_rows,rope=suffix_rope,name=f'expert.{step}.{i}')
-            x=self.norm(x,pg.gemma_expert.model.norm,rms=True)
-            velocity=self.linear32(x[1:],self.model.action_out_proj,self.chunk_size,bf16=True)
-            actions=self.scalar(9,(self.chunk_size,32),a=actions,b=velocity,dtype=torch.float32,slot=3 if step==0 else 0,alpha=dt)
+            final_factor=self.norm_factor(x,final_norm)
+            actions=self.linear32(x[1:],final_projection,self.chunk_size,bf16=True,
+                                  euler_from=actions,euler_dt=dt,rms_factor=final_factor[1:])
             self.landmarks[f'actions.{step}']=actions;time=np.float32(time+dt)
             print('Native reference: expert denoising step',step+1,'wired',flush=True)
         self.output=actions.view(1,self.chunk_size,32)

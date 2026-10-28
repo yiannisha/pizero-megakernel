@@ -32,6 +32,9 @@ class NativeLinearProgram:
             if parent>=0 and tuple(self.stages[parent].output.shape)!=tuple(self.stages[index].a.shape):raise ValueError('Padded producer output and input dimensions must match')
         self.sources=sources
         self.code=linear_streams([LinearWork((s.output.shape[0]//128)*(s.output.shape[1]//128),s.a.shape[1]) for s in self.stages],workers)
+        for worker in self.code:
+            for instruction in worker:
+                if instruction[0] and self.stages[instruction[1]].skinny:instruction[0]=16
         self.plan=program_summary(self.code)
         self.counter_tiles=np.concatenate([np.full(s.output.shape[0]//128,s.output.shape[1]//128,dtype=np.uint64) for s in self.stages])
         handles=np.asarray([s.handle.value for s in self.stages],dtype=np.uintp);parents=np.asarray(sources,dtype=np.int32)

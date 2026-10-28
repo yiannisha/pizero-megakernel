@@ -113,7 +113,13 @@ template<int Mode> struct NativeTensorOp {
                     float x=p.p0?read16(input,size_t(row)*p.lda+k):static_cast<const float*>(input)[size_t(row)*p.lda+k];
                     acc=fmaf(x,static_cast<const float*>(p.b)[size_t(k)*p.ldb+col],acc);
                 }
+                if(p.cache_v)acc*=static_cast<const float*>(p.cache_v)[row];
                 value=acc+(p.c?static_cast<const float*>(p.c)[col]:0.f);
+                if(p.p1&2)value=value/(1.f+expf(-value));
+                if(p.p1&1){
+                    const float* previous=p.d?static_cast<const float*>(p.d):g.noise;
+                    value=__fadd_rn(previous[i],__fmul_rn(p.alpha,value));
+                }
             }else if constexpr(Mode==6){
                 int image=row/256,patch=row%256,pr=patch/16,pc=patch%16;float acc=0;
                 for(int k=0;k<588;++k){
@@ -158,7 +164,7 @@ template<int Mode> struct NativeTensorOp {
         native_complete(g,s);
     }};
 };
-#define NATIVE_MODEL_KERNEL megakernel::mk<Cfg,NativeModelGlobals,NativeLinearOp,NativeVisionAttentionOp,NativeNormOp,NativeTensorOp<1>,NativeTensorOp<2>,NativeTensorOp<3>,NativeTensorOp<4>,NativeTensorOp<5>,NativeTensorOp<6>,NativeTensorOp<7>,NativeTensorOp<8>,NativeTensorOp<9>,NativeTensorOp<10>,NativeTensorOp<11>,NativeGemmaAttentionOp>
+#define NATIVE_MODEL_KERNEL megakernel::mk<Cfg,NativeModelGlobals,NativeLinearOp,NativeVisionAttentionOp,NativeNormOp,NativeTensorOp<1>,NativeTensorOp<2>,NativeTensorOp<3>,NativeTensorOp<4>,NativeTensorOp<5>,NativeTensorOp<6>,NativeTensorOp<7>,NativeTensorOp<8>,NativeTensorOp<9>,NativeTensorOp<10>,NativeTensorOp<11>,NativeGemmaAttentionOp,NativeSkinnyLinearOp>
 struct NativeModelContext {
     NativeModelGlobals globals;int workers,device,count;std::vector<void*> owned;unsigned long long epoch=0;
 };
@@ -189,14 +195,14 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
         if(spec.kind==0){
             auto* base=static_cast<DenseContextBase*>(spec.handle);if(!base||base->device!=device||base->fp8)return cudaErrorInvalidValue;
             const auto& f=static_cast<DenseContext<kittens::bf16>*>(base)->globals;if(!f.bf16_output)return cudaErrorInvalidValue;
-            rows=f.out.rows();width=f.out.cols();tasks[stage]=f.tasks;opcodes[stage]=1;matrices[stage]={f,-1,0,0};
+            rows=f.out.rows();width=f.out.cols();tasks[stage]=f.tasks;opcodes[stage]=f.skinny?16:1;matrices[stage]={f,-1,0,0};
         }else if(spec.kind==1){
             auto* a=static_cast<AttentionContext*>(spec.handle);if(!a||a->device!=device||a->globals.fp16||a->globals.splits!=1)return cudaErrorInvalidValue;
             attention[stage]=a->globals;const auto& f=a->globals;rows=f.batches*f.nq;width=f.heads*f.hd;
             if(f.nk>4096||(!spec.scalar.p0&&f.hd!=72))return cudaErrorInvalidValue;
             tasks[stage]=f.tasks;opcodes[stage]=spec.scalar.p0?15:2;
         }else if(spec.kind==2){
-            auto* n=static_cast<NormContext*>(spec.handle);if(!n||n->device!=device||n->globals.format!=16)return cudaErrorInvalidValue;
+            auto* n=static_cast<NormContext*>(spec.handle);if(!n||n->device!=device||(n->globals.format!=16&&n->globals.format!=17))return cudaErrorInvalidValue;
             norms[stage]=n->globals;rows=n->globals.rows;width=n->globals.width;tasks[stage]=(rows+7)/8;opcodes[stage]=3;
         }else if(spec.kind==3){
             const auto& p=spec.scalar;if(p.mode<1||p.mode>11||p.m<1||p.n<1||!p.output)return cudaErrorInvalidValue;
@@ -207,10 +213,18 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
         data[stage]={int(expected.size()),(rows+127)/128};expected.resize(expected.size()+data[stage].bands,0);
         if(spec.kind==0){
             auto& m=matrices[stage];m.output_counter=data[stage].base;int parent=spec.sources[0];
+            if(m.matrix.rope_cos){
+                if(tasks[stage]>workers)return cudaErrorInvalidConfiguration;
+                m.raw_qkv_counter=int(expected.size());expected.resize(expected.size()+data[stage].bands,0);
+            }
             if(parent>=0){if(data[parent].bands!=data[stage].bands)return cudaErrorInvalidValue;m.input_counter=data[parent].base;}
             int residual=spec.sources[1];if(residual>=0&&m.matrix.residual){
                 if(data[residual].bands!=data[stage].bands)return cudaErrorInvalidValue;
                 m.residual_counter=data[residual].base;
+            }
+            int factor=spec.sources[m.matrix.residual?2:1];if(factor>=0&&m.matrix.rms_factors){
+                if(data[factor].bands!=data[stage].bands)return cudaErrorInvalidValue;
+                m.factor_counter=data[factor].base;
             }
         }
         offsets[stage]=int(contribution_offsets.size()-1);seen[stage].resize(tasks[stage],0);
@@ -240,6 +254,7 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
     auto* de=upload(expected);
     for(int i=0;i<count;++i)if(specs[i].kind==0&&matrices[i].input_counter>=0)matrices[i].input_expected=de+matrices[i].input_counter;
     for(int i=0;i<count;++i)if(specs[i].kind==0&&matrices[i].residual_counter>=0)matrices[i].residual_expected=de+matrices[i].residual_counter;
+    for(int i=0;i<count;++i)if(specs[i].kind==0&&matrices[i].factor_counter>=0)matrices[i].factor_expected=de+matrices[i].factor_counter;
     NativeModelGlobals g{};g.matrices=upload(matrices);g.attention=upload(attention);g.norms=upload(norms);g.scalar=upload(scalar);g.data=upload(data);g.sources=upload(sources);g.expected=de;
     g.task_offsets=upload(offsets);g.contribution_offsets=upload(contribution_offsets);g.contributions=upload(contributions);
     g.ready=static_cast<unsigned long long*>(alloc(expected.size()*8));if(error==cudaSuccess)error=cudaMemset(g.ready,0,expected.size()*8);

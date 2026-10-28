@@ -95,3 +95,13 @@ using setup-time interleaved gate/up weight rows. The first complete run kept
 instructions. The clean-source replay measured 194.09 ms native in
 `results/native_pi0_geglu_epilogue_clean.json`. This is a BF16 result;
 quantized FFN paths remain open.
+
+The subsequent realtime-vla native pass adds compact RMS row factors with
+folded Gemma weights, 64-row expert GEMMs, vision bias+GELU, action/time SiLU
+and final action/Euler epilogues, and QKV+RoPE+cache writes in one native range
+instruction. The complete random-model gate passes with one launch at
+0.00848 action NRMSE and a 174.45 ms isolated B200 median. Each of the
+vision GELU, 64-row expert, and QKV/RoPE fusions improves matched native
+latency in `results/native_pi0_realtime_variants.json`. The action path still
+has a large gap to the matched OpenPI CUDA graph reference (~40.23 ms), so
+further expert scheduling and kernel work remain performance priorities.

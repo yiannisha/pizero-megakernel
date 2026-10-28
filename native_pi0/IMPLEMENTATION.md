@@ -248,3 +248,24 @@ memcheck and synccheck both reported zero errors on the complete three-view,
 50-action, ten-step configuration. Their reports are
 `results/native_pi0_geglu_epilogue_full_memcheck.json` and
 `results/native_pi0_geglu_epilogue_full_synccheck.json`.
+
+### Realtime-VLA native fusion pass
+
+The native BF16 path now computes compact RMS factors for Gemma QKV/gate and
+final action projections, folds static RMS weights into projection weights,
+and applies row factors in the GEMM epilogues. The action/time input projection
+includes SiLU, and the output projection includes the Euler update. Vision
+FC1 includes bias and GELU in its GEMM epilogue. A 64-row TCGen05 operator
+handles the 51-row expert without computing the padded upper half. Gemma QKV
+range consumers rotate Q/K and write the K/V cache after all output tiles for
+their row band are ready; the separate RoPE instruction is removed.
+
+The complete three-view, 50-action, ten-step random-model action gate passes
+at 0.00848 NRMSE with one VM launch and changed-input replay. The 16-token
+prompt case passes at 0.01179 NRMSE. The accepted B200 median is 174.4 ms,
+compared with 194.1 ms before this pass. Same-input native variants measured
+176.3 ms without vision GELU, 181.9 ms without 64-row expert GEMMs, and
+181.2 ms without QKV/RoPE/cache fusion. These results are in
+`results/native_pi0_realtime_fusions.json`,
+`results/native_pi0_realtime_fusions_prompt16.json`, and
+`results/native_pi0_realtime_variants.json`.

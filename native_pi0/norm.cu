@@ -89,6 +89,10 @@ struct NormOp {
             for(int i=0;i<16;i++){float v=values[i]-mean;squares+=v*v;}
         }
         float inverse=rsqrtf(reduce(squares,s)/g.width+g.epsilon);
+        if(g.format==17){
+            if(block==0)*reinterpret_cast<float*>(g.output+size_t(row)*sizeof(float))=inverse;
+            return;
+        }
         if(!active)return;
         float maximum=0,inv_global=1.f/g.global_scale;
         #pragma unroll
@@ -134,7 +138,7 @@ struct NormContext {NormGlobals globals;int *program,*timing;int device;};
 extern "C" int create_norm(void** handle,const void* input,const void* residual,const float* gamma,const float* beta,const float* inverse_scale,
     void* residual_output,void* output,void* scales,int rows,int width,int workers,int fp16,int format,int layer,int round_norm,int round_residual,int legacy_ties,float epsilon,float global_scale){
     if(!handle)return cudaErrorInvalidValue;*handle=nullptr;
-    if(!input||!output||rows<1||width<16||width>2048||width%16||workers<1||(format!=4&&format!=8&&format!=16)||(format==4&&!scales)||(format==16&&fp16)
+    if(!input||!output||rows<1||width<16||width>2048||width%16||workers<1||(format!=4&&format!=8&&format!=16&&format!=17)||(format==4&&!scales)||(format==16&&fp16)||(format==17&&(fp16||layer||gamma||beta||residual))
        ||!isfinite(epsilon)||epsilon<=0||!isfinite(global_scale)||global_scale<=0||(fp16!=0&&fp16!=1)||(!residual&&residual_output))return cudaErrorInvalidValue;
     int device;cudaDeviceProp properties{};cudaError_t error=cudaGetDevice(&device);
     if(error==cudaSuccess)error=cudaGetDeviceProperties(&properties,device);

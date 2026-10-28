@@ -1,0 +1,182 @@
+{
+  "workload": {
+    "views": 3,
+    "prompt_len": 0,
+    "chunk": 50,
+    "flow_steps": 10,
+    "seed": 101,
+    "native_workers": 148,
+    "checkpoint": null,
+    "same_model_and_inputs": true
+  },
+  "environment": {
+    "gpu": "NVIDIA B200",
+    "capability": [
+      10,
+      0
+    ],
+    "torch": "2.8.0+cu128",
+    "cuda": "12.8"
+  },
+  "library_sha256": "db00f61337335f76cff23f1e2bd587a8ce73a6c94295a00336f85d79f78ec648",
+  "source_sha256": {
+    "benchmarks/matched_native.py": "80be2142b000c377f94bd0522aa7c19d0183de29486afe57ea8953acb4d9ba19",
+    "benchmarks/openpi_backend.py": "dcdd72dc3c5d215d1cf5952ba00e6da1987718a001d1ed498d0b617fd52e7b64",
+    "native_pi0/model.py": "6e0a01336ec5c5590192db93f80c35f20687e83192cc90254fe5ed6b9ba7f877",
+    "native_pi0/dense.py": "456f54368c7ed58e6187630e1da451e513cb175da719956c75261eb792e4c7b2"
+  },
+  "backends": {
+    "native_fused": {
+      "validation": {
+        "nrmse": 0.008407791145145893,
+        "normalized_max_abs": 0.03172445669770241,
+        "cosine": 0.9999648928642273,
+        "finite": true
+      },
+      "timing": {
+        "gpu_median_ms": 174.3544921875,
+        "gpu_samples_ms": [
+          174.48416137695312,
+          174.36741638183594,
+          174.31674194335938,
+          174.34323120117188,
+          174.3544921875
+        ],
+        "wall_median_ms": 174.475155,
+        "wall_samples_ms": [
+          174.776123,
+          174.501374,
+          174.444008,
+          174.474805,
+          174.475155
+        ],
+        "other_compute_pids": [],
+        "gpu_isolation_verified": true
+      },
+      "single_native_kernel": true,
+      "program": {
+        "workers": 148,
+        "stream_length": 464,
+        "instructions": 61898,
+        "compute_tiles": 100376,
+        "largest_tile_range": 47,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      }
+    },
+    "native_no_gelu": {
+      "validation": {
+        "nrmse": 0.008407791145145893,
+        "normalized_max_abs": 0.03172445669770241,
+        "cosine": 0.9999648928642273,
+        "finite": true
+      },
+      "timing": {
+        "gpu_median_ms": 176.2539520263672,
+        "gpu_samples_ms": [
+          176.2539520263672,
+          176.26963806152344,
+          176.23980712890625,
+          176.22511291503906,
+          176.32479858398438
+        ],
+        "wall_median_ms": 176.418635,
+        "wall_samples_ms": [
+          176.418635,
+          176.442708,
+          176.3687,
+          176.407315,
+          176.587668
+        ],
+        "other_compute_pids": [],
+        "gpu_isolation_verified": true
+      },
+      "single_native_kernel": true,
+      "program": {
+        "workers": 148,
+        "stream_length": 494,
+        "instructions": 65894,
+        "compute_tiles": 105884,
+        "largest_tile_range": 47,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      }
+    },
+    "native_no_skinny": {
+      "validation": {
+        "nrmse": 0.008407791145145893,
+        "normalized_max_abs": 0.03172445669770241,
+        "cosine": 0.9999648928642273,
+        "finite": true
+      },
+      "timing": {
+        "gpu_median_ms": 181.86166381835938,
+        "gpu_samples_ms": [
+          181.8486328125,
+          181.86166381835938,
+          181.84109497070312,
+          181.8748779296875,
+          181.87680053710938
+        ],
+        "wall_median_ms": 182.041153,
+        "wall_samples_ms": [
+          182.041153,
+          181.983889,
+          181.986698,
+          182.089761,
+          182.041351
+        ],
+        "other_compute_pids": [],
+        "gpu_isolation_verified": true
+      },
+      "single_native_kernel": true,
+      "program": {
+        "workers": 148,
+        "stream_length": 464,
+        "instructions": 61898,
+        "compute_tiles": 100376,
+        "largest_tile_range": 47,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      }
+    },
+    "native_no_qkv": {
+      "validation": {
+        "nrmse": 0.008407791145145893,
+        "normalized_max_abs": 0.03172445669770241,
+        "cosine": 0.9999648928642273,
+        "finite": true
+      },
+      "timing": {
+        "gpu_median_ms": 181.2855987548828,
+        "gpu_samples_ms": [
+          181.37423706054688,
+          181.2855987548828,
+          181.20669555664062,
+          181.3054656982422,
+          181.25820922851562
+        ],
+        "wall_median_ms": 181.494075,
+        "wall_samples_ms": [
+          181.687727,
+          181.413804,
+          181.337961,
+          181.494075,
+          181.505533
+        ],
+        "other_compute_pids": [],
+        "gpu_isolation_verified": true
+      },
+      "single_native_kernel": true,
+      "program": {
+        "workers": 148,
+        "stream_length": 530,
+        "instructions": 67562,
+        "compute_tiles": 106040,
+        "largest_tile_range": 47,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      }
+    }
+  }
+}

@@ -2,10 +2,18 @@
 #include "tcgen_probe.cu"
 #include <climits>
 static_assert(Cfg::NUM_CONSUMER_WARPS==4);
+template<int Rows> __device__ auto dense_accumulator(State& s){
+    if constexpr(Rows==64)return s.tensor_alloc.template allocate<kittens::tt<float,64,128>>(0,0);
+    else return s.tensor_alloc.template allocate<kittens::tt<float,128,128>>(0);
+}
 template<class Element> struct DenseGlobals {
+    using AInput=std::conditional_t<std::is_same_v<Element,kittens::bf16>,
+        kittens::gl<Element,1,1,-1,-1,typename Globals<Element>::Tile,kittens::st<Element,64,64>>,
+        typename Globals<Element>::Input>;
     megakernel::instruction_layout<Cfg> instructions;
     megakernel::timing_layout<Cfg> timings;
-    typename Globals<Element>::Input a,b;
+    AInput a;
+    typename Globals<Element>::Input b;
     Output out;
     float alpha;
     int workers,tasks,m_tiles,n_tiles;
@@ -13,6 +21,12 @@ template<class Element> struct DenseGlobals {
     kittens::bf16* bf16_output;
     int round_before_residual=0;
     kittens::bf16* geglu_output=nullptr;
+    int gelu_columns=0;
+    const float* rms_factors=nullptr;
+    int skinny=0;
+    const kittens::bf16 *rope_cos=nullptr,*rope_sin=nullptr;
+    kittens::bf16 *rope_cache_k=nullptr,*rope_cache_v=nullptr;
+    int rope_key_offset=0,rope_rows=0,rope_cache_base=0;
 };
 template<class Element> struct DenseView {
     using Tile=typename Globals<Element>::Tile;
@@ -27,9 +41,11 @@ template<class Element> struct DenseView {
     Output out;float alpha;int workers,tasks,m_tiles,n_tiles,fixed_task;
     const kittens::bf16 *bias,*residual; kittens::bf16* bf16_output,*geglu_output;
     int round_before_residual;
+    int gelu_columns;
+    const float* rms_factors;
     __device__ DenseView(const DenseGlobals<Element>& g,int task):
         a{g.a.template get_tma<Tile,2>(),g.a.cols()},b{g.b.template get_tma<Tile,2>(),g.b.cols()},out(g.out),alpha(g.alpha),
-        workers(g.workers),tasks(g.tasks),m_tiles(g.m_tiles),n_tiles(g.n_tiles),fixed_task(task),bias(g.bias),residual(g.residual),bf16_output(g.bf16_output),geglu_output(g.geglu_output),round_before_residual(g.round_before_residual){}
+        workers(g.workers),tasks(g.tasks),m_tiles(g.m_tiles),n_tiles(g.n_tiles),fixed_task(task),bias(g.bias),residual(g.residual),bf16_output(g.bf16_output),geglu_output(g.geglu_output),round_before_residual(g.round_before_residual),gelu_columns(g.gelu_columns),rms_factors(g.rms_factors){}
 };
 template<class Element> struct DenseOp {
     static constexpr int opcode=1;
@@ -48,11 +64,18 @@ template<class Element> struct DenseOp {
     struct launcher {static __device__ void run(const G& g,State& s){
         DenseView<Element> view(g,task(g,s));Matmul<Element>::launcher::run(view,s);
     }};
-    template<class View> static __device__ void consume(const View& g,State& s,int phase=0,bool retire_tensor=true){
+    template<int TileRows=128,class View> static __device__ void consume(const View& g,State& s,int phase=0,bool retire_tensor=true){
         int task=Matmul<Element>::task(g,s);if(task>=g.tasks)return;
         kittens::wait(s.semaphores()[4],phase);
-        auto acc=s.tensor_alloc.template allocate<kittens::tt<float,128,128>>(0);
-        kittens::rt_fl<32,128> values;kittens::warpgroup::load_async(values,acc);kittens::tensor_load_wait();
+        auto acc=dense_accumulator<TileRows>(s);
+        kittens::rt_fl<TileRows/4,128> values;
+        if constexpr(TileRows==64){
+            // TCGen05 places the four logical 16-row warp slices 32 TMEM
+            // rows apart for an M=64 instruction.
+            auto slice=kittens::tt<float,16,128>(acc.addr+((32*kittens::warpid())<<16));
+            kittens::group<1>::load_async(values,slice);
+        }else kittens::warpgroup::load_async(values,acc);
+        kittens::tensor_load_wait();
         kittens::warp::mul(values,values,g.alpha);
         if(!g.bf16_output&&!g.bias&&!g.residual)kittens::warpgroup::store(g.out,values,{task/g.n_tiles,task%g.n_tiles});
         else{
@@ -64,9 +87,13 @@ template<class Element> struct DenseOp {
                 for(int j=0;j<values.width;++j){
 #pragma unroll
                     for(int half=0;half<2;++half){
-                        int r=row_base+warp*32+i*16+lane/4+half*8,c=col_base+j*16+2*(lane%4);
+                        int r=row_base+warp*(TileRows/4)+i*16+lane/4+half*8,c=col_base+j*16+2*(lane%4);
                         size_t index=size_t(r)*n+c;
                         auto lo=values.tiles[i][j].data[half],hi=values.tiles[i][j].data[half+2];
+                        if(g.rms_factors){
+                            float factor=g.rms_factors[r];
+                            lo.x*=factor;lo.y*=factor;hi.x*=factor;hi.y*=factor;
+                        }
                         if(g.geglu_output){
                             float gate=float(kittens::bf16(lo.x)),up=float(kittens::bf16(lo.y));
                             float gate_hi=float(kittens::bf16(hi.x)),up_hi=float(kittens::bf16(hi.y));
@@ -85,6 +112,12 @@ template<class Element> struct DenseOp {
                         }
                         if(g.residual){lo.x+=float(g.residual[index]);lo.y+=float(g.residual[index+1]);hi.x+=float(g.residual[index+8]);hi.y+=float(g.residual[index+9]);}
                         if(g.bias&&!(g.residual&&g.round_before_residual)){lo.x+=float(g.bias[c]);lo.y+=float(g.bias[c+1]);hi.x+=float(g.bias[c+8]);hi.y+=float(g.bias[c+9]);}
+                        if(g.gelu_columns){
+                            lo.x=c<g.gelu_columns?gelu(float(kittens::bf16(lo.x))):0.f;
+                            lo.y=c+1<g.gelu_columns?gelu(float(kittens::bf16(lo.y))):0.f;
+                            hi.x=c+8<g.gelu_columns?gelu(float(kittens::bf16(hi.x))):0.f;
+                            hi.y=c+9<g.gelu_columns?gelu(float(kittens::bf16(hi.y))):0.f;
+                        }
                         if(g.bf16_output){
                             *reinterpret_cast<__nv_bfloat162*>(g.bf16_output+index)=__floats2bfloat162_rn(lo.x,lo.y);
                             *reinterpret_cast<__nv_bfloat162*>(g.bf16_output+index+8)=__floats2bfloat162_rn(hi.x,hi.y);
@@ -108,7 +141,7 @@ template<class Element> struct DenseContext:DenseContextBase {
 };
 template<class Element> int create_dense_impl(void** handle,const void* a,const void* b,void* output,const void* bias,const void* residual,
     int m,int n,int k,int workers,int bf16,float alpha,int device){
-    using G=DenseGlobals<Element>;using Input=typename Globals<Element>::Input;
+    using G=DenseGlobals<Element>;using AInput=typename G::AInput;using BInput=typename Globals<Element>::Input;
     int *slots_dev=nullptr,*program=nullptr,*timing=nullptr,slots=0;
     int64_t tasks64=int64_t(m/128)*(n/128);if(tasks64>INT_MAX)return cudaErrorInvalidValue;
     int tasks=int(tasks64),iterations=int((tasks64+workers-1)/workers);
@@ -125,7 +158,7 @@ template<class Element> int create_dense_impl(void** handle,const void* a,const 
     if(error==cudaSuccess)error=cudaFuncSetAttribute(kernel,cudaFuncAttributeMaxDynamicSharedMemorySize,Cfg::DYNAMIC_SHARED_MEMORY);
     if(error==cudaSuccess){
         G g{megakernel::instruction_layout<Cfg>(program,nullptr,slots,iterations,nullptr),megakernel::timing_layout<Cfg>(timing,nullptr,slots,iterations,nullptr),
-            Input((Element*)a,nullptr,nullptr,m,k),Input((Element*)b,nullptr,nullptr,n,k),Output(bf16?nullptr:static_cast<float*>(output),nullptr,nullptr,m,n),
+            AInput((Element*)a,nullptr,nullptr,m,k),BInput((Element*)b,nullptr,nullptr,n,k),Output(bf16?nullptr:static_cast<float*>(output),nullptr,nullptr,m,n),
             alpha,workers,tasks,m/128,n/128,static_cast<const kittens::bf16*>(bias),static_cast<const kittens::bf16*>(residual),bf16?static_cast<kittens::bf16*>(output):nullptr};
         *handle=new DenseContext<Element>(device,std::is_same_v<Element,kittens::fp8e4m3>,g,program,timing);
     }else{cudaFree(program);cudaFree(timing);}
@@ -176,4 +209,45 @@ extern "C" int configure_dense_geglu(void* handle,void* compact_output){
     auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
     if(!c->globals.bf16_output||c->globals.bias||c->globals.residual||c->globals.out.cols()%2)return cudaErrorInvalidValue;
     c->globals.geglu_output=static_cast<kittens::bf16*>(compact_output);return cudaSuccess;
+}
+
+extern "C" int configure_dense_gelu(void* handle,int logical_columns){
+    if(!handle)return cudaErrorInvalidValue;
+    auto* base=static_cast<DenseContextBase*>(handle);
+    if(base->fp8)return cudaErrorInvalidValue;
+    auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
+    if(!c->globals.bf16_output||c->globals.residual||c->globals.geglu_output||logical_columns<1||logical_columns>c->globals.out.cols())
+        return cudaErrorInvalidValue;
+    c->globals.gelu_columns=logical_columns;return cudaSuccess;
+}
+
+extern "C" int configure_dense_rms_factor(void* handle,const float* factors){
+    if(!handle||!factors)return cudaErrorInvalidValue;
+    auto* base=static_cast<DenseContextBase*>(handle);
+    if(base->fp8)return cudaErrorInvalidValue;
+    auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
+    if(!c->globals.bf16_output||c->globals.bias||c->globals.residual)return cudaErrorInvalidValue;
+    c->globals.rms_factors=factors;return cudaSuccess;
+}
+
+extern "C" int configure_dense_skinny(void* handle){
+    if(!handle)return cudaErrorInvalidValue;
+    auto* base=static_cast<DenseContextBase*>(handle);
+    if(base->fp8)return cudaErrorInvalidValue;
+    auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
+    if(!c->globals.bf16_output||c->globals.a.rows()!=128)return cudaErrorInvalidValue;
+    c->globals.skinny=1;return cudaSuccess;
+}
+
+extern "C" int configure_dense_qkv_rope(void* handle,const void* cos,const void* sin,void* cache_k,void* cache_v,
+                                           int logical_rows,int key_offset,int cache_base){
+    if(!handle||!cos||!sin||!cache_k||!cache_v||logical_rows<1||key_offset<0||key_offset%256||cache_base<0)return cudaErrorInvalidValue;
+    auto* base=static_cast<DenseContextBase*>(handle);
+    if(base->fp8)return cudaErrorInvalidValue;
+    auto* c=static_cast<DenseContext<kittens::bf16>*>(base);
+    auto& g=c->globals;
+    if(!g.bf16_output||g.bias||g.residual||g.geglu_output||logical_rows>g.a.rows()||key_offset+512>g.out.cols())return cudaErrorInvalidValue;
+    g.rope_cos=static_cast<const kittens::bf16*>(cos);g.rope_sin=static_cast<const kittens::bf16*>(sin);
+    g.rope_cache_k=static_cast<kittens::bf16*>(cache_k);g.rope_cache_v=static_cast<kittens::bf16*>(cache_v);
+    g.rope_rows=logical_rows;g.rope_key_offset=key_offset;g.rope_cache_base=cache_base;return cudaSuccess;
 }
