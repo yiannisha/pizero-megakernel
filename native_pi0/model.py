@@ -57,13 +57,13 @@ class NativePi0:
     def from_model(cls,model,**kwargs):return cls(model,**kwargs)
 
     def __init__(self,model,*,num_views=3,prompt_len=0,chunk_size=50,flow_steps=10,precision='auto',library=None,workers=148,
-                 fuse_vision_gelu=True,skinny_expert=True,fuse_qkv_rope=True,partitioned=False):
+                 fuse_vision_gelu=True,skinny_expert=True,fuse_qkv_rope=True,partitioned=False,prefix_flash=False,fast_patch=False):
         if model.config.pi05 or precision not in ('auto','bf16'):raise ValueError('Reference path supports ordinary π0 with BF16 transformers')
         if num_views not in (1,2,3) or prompt_len<0 or chunk_size<1 or flow_steps<1:raise ValueError('Invalid fixed inference dimensions')
         self.model=model;self.num_views=num_views;self.prompt_len=prompt_len;self.chunk_size=chunk_size;self.flow_steps=flow_steps
-        self.precision_policy='bf16_reference';self.workers=workers;self.fuse_vision_gelu=fuse_vision_gelu;self.skinny_expert=skinny_expert;self.fuse_qkv_rope=fuse_qkv_rope;self.partitioned=partitioned;self.device=next(model.parameters()).device
+        self.precision_policy='bf16_reference';self.workers=workers;self.fuse_vision_gelu=fuse_vision_gelu;self.skinny_expert=skinny_expert;self.fuse_qkv_rope=fuse_qkv_rope;self.partitioned=partitioned;self.prefix_flash=prefix_flash;self.fast_patch=fast_patch;self.device=next(model.parameters()).device
         if self.device.type!='cuda':raise ValueError('Supply a CUDA OpenPI model')
-        self.owners=ExitStack();self.buffers=[];self.weight_buffers={};self.stages=[];self.stage_tasks=[];self.landmarks={};self.handle=C.c_void_p();self.producers={};self.cache_producers={};self.opcodes=[];self.stage_cost=[]
+        self.owners=ExitStack();self.buffers=[];self.weight_buffers={};self.stages=[];self.stage_tasks=[];self.landmarks={};self.handle=C.c_void_p();self.component_handles={};self.producers={};self.cache_producers={};self.opcodes=[];self.stage_cost=[]
         if library is None:
             library=Path('/tmp/pi0_native_model.so')
             subprocess.run(['nvcc','-O3','-lineinfo','-std=c++20','-arch=sm_100a','-DKITTENS_HOPPER','-DKITTENS_BLACKWELL',
@@ -72,9 +72,10 @@ class NativePi0:
                 '-shared','-Xcompiler','-fPIC',str(ROOT/'native_pi0/model.cu'),str(ROOT/'native_pi0/launch_trace.cpp'),
                 '-lcupti','-Xlinker','-rpath','-Xlinker','/usr/local/cuda/lib64','-lcuda','-o',str(library)],check=True)
         self.library_path=Path(library).resolve();self.library=C.CDLL(str(self.library_path))
+        self.destroy=self.library.destroy_native_model;self.destroy.argtypes=[C.c_void_p];self.destroy.restype=C.c_int
         try:
             with torch.cuda.device(self.device),torch.no_grad():self._build()
-        except Exception:self.owners.close();raise
+        except Exception:self.close();raise
 
     def tensor(self,shape,dtype=torch.bfloat16):
         value=torch.zeros(shape,device=self.device,dtype=dtype);self.buffers.append(value);return value
@@ -89,7 +90,7 @@ class NativePi0:
         if len(parents)>3:raise ValueError('Too many native tensor sources')
         index=len(self.stages);spec=scalar or Scalar()
         self.stages.append(Stage(kind,handle,spec,(C.c_int*3)(*(parents+[-1]*(3-len(parents))))));self.stage_tasks.append(tasks)
-        self.opcodes.append(1 if kind==0 else (15 if spec.p0 else 2) if kind==1 else 3 if kind==2 else spec.mode+3)
+        self.opcodes.append(1 if kind==0 else (15 if spec.p0 else 2) if kind==1 else 3 if kind==2 else spec.mode+(5 if spec.mode>=12 else 3))
         self.stage_cost.append(padded(max(cost,64),64))
         self.producers[output.untyped_storage().data_ptr()]=index
         return index
@@ -101,10 +102,11 @@ class NativePi0:
         cache_k,cache_v=kv_cache if kv_cache is not None else (None,None)
         spec=Scalar(*[pointer(t) for t in (a,b,c,cache_k if kv_cache is not None else d,out,cache_v if kv_cache is not None else rms_factor)],mode,m,n,k,lda or (a.shape[-1] if a is not None else n),
                     ldb or (b.shape[-1] if b is not None else n),n,p0,p1,slot,cache_base,float(alpha))
-        tile=128 if mode in (5,6) else 16384;self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c,d,rms_factor),cost=k if mode==5 else 588 if mode==6 else 64);return out
+        tile=128 if mode in (5,6) else 4096 if mode in (12,13) else 16384
+        self.add(3,None,(m*n+tile-1)//tile,spec,output=out,inputs=(a,b,c,d,rms_factor),cost=k if mode==5 else 588 if mode==6 else 64);return out
 
     def dense(self,x,weight,bias=None,*,rows=None,residual=None,geglu=False,gelu=False,rms_factors=None,
-              rope=None,kv_cache=None,rope_key_offset=0,cache_base=0):
+              rope=None,kv_cache=None,rope_key_offset=0,cache_base=0,output_dtype=torch.bfloat16):
         rows=rows or x.shape[0];n,k=weight.shape;mp=padded(rows,128);kp=padded(k,64);npad=padded(n,128)
         if x.shape!=(mp,kp) or x.dtype!=torch.bfloat16:raise ValueError(('Dense layout',x.shape,(mp,kp),x.dtype))
         if geglu and (bias is not None or residual is not None or n%256):raise ValueError('GeGLU requires interleaved gate/up BF16 weights')
@@ -114,7 +116,7 @@ class NativePi0:
         if key not in self.weight_buffers:
             w=self.tensor((npad,kp));w[:n,:k].copy_(weight);self.weight_buffers[key]=w
         compact=self.tensor((mp,npad//2)) if geglu else None
-        op=self.owners.enter_context(ResidentDense(self.library_path,x[:rows,:k],weight,bias=bias,workers=self.workers,
+        op=self.owners.enter_context(ResidentDense(self.library_path,x[:rows,:k],weight,bias=bias,workers=self.workers,output_dtype=output_dtype,
             input_buffer=x,weight_buffer=self.weight_buffers[key],residual=residual,
             residual_buffer=residual,round_before_residual=residual is not None,geglu_output=compact,gelu=gelu,rms_factors=rms_factors,skinny=skinny,
             rope=rope,kv_cache=kv_cache,rope_key_offset=rope_key_offset,cache_base=cache_base))
@@ -187,7 +189,7 @@ class NativePi0:
             splits=1,kv_cache=cache,cached_prefix_rows=prefix,
             output=output[:batches*rows].view(batches,rows,hk if cache_only else heads,hd)))
         self.add(1,op.handle.value,batches*heads*((rows+63)//64),
-            Scalar(alpha=op.scale,p0=int(rms)),
+            Scalar(alpha=op.scale,p0=int(rms),p1=int(self.prefix_flash and name.startswith('prefix.'))),
             output=output,inputs=(qkv,),cache_source=self.cache_producers.get(cache_key,-1) if prefix else -1,cost=(rows+prefix)*hd)
         if debug:self.landmarks[tag+'attention']=output[:logical]
         y=self.dense(output,att.o_proj.weight if rms else att.out_proj.weight,att.o_proj.bias if rms else att.out_proj.bias,rows=batches*rows,residual=residual)
@@ -213,9 +215,18 @@ class NativePi0:
 
     def _build(self):
         pg=self.model.paligemma_with_expert;vision=pg.paligemma.vision_tower.vision_model
-        embedding=vision.embeddings;patch_weight=embedding.patch_embedding.weight.float().reshape(1152,-1).T.contiguous()
-        self.buffers.append(patch_weight)
-        x=self.scalar(6,(self.num_views*256,1152),b=patch_weight,c=embedding.patch_embedding.bias,d=embedding.position_embedding.weight,slot=1)
+        embedding=vision.embeddings
+        if self.fast_patch:
+            patches=self.scalar(12,(self.num_views*256,640),slot=1)
+            patch_weight=embedding.patch_embedding.weight.reshape(1152,-1).to(torch.bfloat16)
+            self.buffers.append(patch_weight)
+            convolution=self.dense(patches,patch_weight,rows=self.num_views*256,output_dtype=torch.float32)
+            x=self.scalar(13,(self.num_views*256,1152),a=convolution,b=embedding.patch_embedding.bias,
+                          c=embedding.position_embedding.weight)
+        else:
+            patch_weight=embedding.patch_embedding.weight.float().reshape(1152,-1).T.contiguous()
+            self.buffers.append(patch_weight)
+            x=self.scalar(6,(self.num_views*256,1152),b=patch_weight,c=embedding.patch_embedding.bias,d=embedding.position_embedding.weight,slot=1)
         self.landmarks['patch']=x
         for i,layer in enumerate(vision.encoder.layers):
             x=self.block(x,layer,rows=256,batches=self.num_views,heads=16,hk=16,hd=72,rms=False,name=f'vision.{i}')
@@ -273,7 +284,6 @@ class NativePi0:
         self.plan=program_summary(self.code)
         print('Native pi0 static program:',len(self.stages),'operations,',self.plan,flush=True)
         create=self.library.create_native_model;create.argtypes=[C.POINTER(C.c_void_p),C.c_int,C.c_void_p,C.c_void_p,C.c_int,C.c_int];create.restype=C.c_int
-        self.component_handles={}
         if self.partitioned:
             for name,(start,end) in self.component_ranges.items():
                 specs=[]
@@ -293,7 +303,6 @@ class NativePi0:
             error=create(C.byref(self.handle),len(specs),C.cast(specs,C.c_void_p),self.code.ctypes.data,self.workers,self.code.shape[1])
             if error:raise RuntimeError(f'Native pi0 setup CUDA error {error}')
         self.launch=self.library.launch_native_model;self.launch.argtypes=[C.c_void_p]*6;self.launch.restype=C.c_int
-        self.destroy=self.library.destroy_native_model;self.destroy.argtypes=[C.c_void_p];self.destroy.restype=C.c_int
 
     def forward(self,images,state,noise,tokens):
         if not (self.handle.value or self.component_handles):raise RuntimeError('Native π0 reference is closed')

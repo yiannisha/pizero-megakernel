@@ -67,10 +67,16 @@ struct NativeGemmaAttentionOp {
     struct consumer {static __device__ void run(const NativeModelGlobals& g,State& s){
         native_wait_inputs(g,s);const auto a=g.attention[s.instruction()[1]];int used=AttentionOp::pages(a);
         if(threadIdx.x==0)for(int p=0;p<used;++p)s.wait_page_ready(s.pid(p));native_sync();
-        for(int task=s.instruction()[2];task<s.instruction()[2]+s.instruction()[3];++task)
-            native_model_attention::eager_attend<kittens::bf16,256>(s,task,static_cast<const kittens::bf16*>(a.q),static_cast<const kittens::bf16*>(a.k),static_cast<const kittens::bf16*>(a.v),a.ldq,a.ldkv,
-                nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,static_cast<kittens::bf16*>(a.output),a.out_ld,a.nq,a.nk,a.heads,a.kv_heads,a.scale_log2,a.prefix,a.mask,
-                0,a.nk,nullptr,nullptr,static_cast<kittens::bf16*>(a.cache_k),static_cast<kittens::bf16*>(a.cache_v),a.cache_rows,a.cached_prefix_rows,false);
+        for(int task=s.instruction()[2];task<s.instruction()[2]+s.instruction()[3];++task){
+            if(g.scalar[s.instruction()[1]].p1)
+                native_model_attention::flash_attend<kittens::bf16,256>(s,task,static_cast<const kittens::bf16*>(a.q),static_cast<const kittens::bf16*>(a.k),static_cast<const kittens::bf16*>(a.v),a.ldq,a.ldkv,
+                    nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,static_cast<kittens::bf16*>(a.output),a.out_ld,a.nq,a.nk,a.heads,a.kv_heads,a.scale_log2,a.prefix,a.mask,
+                    0,a.nk,nullptr,nullptr,nullptr,nullptr,0,0,false);
+            else
+                native_model_attention::eager_attend<kittens::bf16,256>(s,task,static_cast<const kittens::bf16*>(a.q),static_cast<const kittens::bf16*>(a.k),static_cast<const kittens::bf16*>(a.v),a.ldq,a.ldkv,
+                    nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,static_cast<kittens::bf16*>(a.output),a.out_ld,a.nq,a.nk,a.heads,a.kv_heads,a.scale_log2,a.prefix,a.mask,
+                    0,a.nk,nullptr,nullptr,static_cast<kittens::bf16*>(a.cache_k),static_cast<kittens::bf16*>(a.cache_v),a.cache_rows,a.cached_prefix_rows,false);
+        }
         native_sync();if(threadIdx.x==0)for(int p=0;p<used;++p)s.finish_page(s.pid(p),4);native_complete(g,s);
     }};
 };
@@ -87,7 +93,7 @@ struct NativeNormOp {
     }};
 };
 template<int Mode> struct NativeTensorOp {
-    static constexpr int opcode=Mode+3;
+    static constexpr int opcode=Mode+(Mode>=12?5:3);
     using controller=megakernel::NoOp<Cfg>::controller;
     using loader=megakernel::NoOp<Cfg>::loader;
     using launcher=megakernel::NoOp<Cfg>::launcher;
@@ -98,7 +104,7 @@ template<int Mode> struct NativeTensorOp {
         native_wait_inputs(g,s);
         const NativeScalar p=g.scalar[s.instruction()[1]];
         const void* input=p.input_slot==1?g.images:p.input_slot==2?g.state:p.input_slot==3?g.noise:p.a;
-        constexpr int tile=(Mode==5||Mode==6)?128:16384; int begin=s.instruction()[2]*tile,end=min(begin+s.instruction()[3]*tile,p.m*p.n);
+        constexpr int tile=(Mode==5||Mode==6)?128:(Mode==12||Mode==13)?4096:16384; int begin=s.instruction()[2]*tile,end=min(begin+s.instruction()[3]*tile,p.m*p.n);
         for(int i=begin+threadIdx.x;i<end;i+=128){
             int row=i/p.n,col=i%p.n;float value=0;
             if constexpr(Mode==1)value=read16(input,size_t(row)*p.lda+col)+read16(p.b,size_t(row)*p.ldb+col);
@@ -146,6 +152,17 @@ template<int Mode> struct NativeTensorOp {
                         value=float(kittens::bf16(value*read16(p.b,size_t(row)*p.p1+d)))+float(kittens::bf16(other*read16(p.c,size_t(row)*p.p1+d)));
                     }
                 }
+            }else if constexpr(Mode==12){
+                if(col<588){
+                    int image=row/256,patch=row%256,pr=patch/16,pc=patch%16;
+                    int channel=col/196,rr=(col%196)/14,cc=col%14;
+                    size_t at=((size_t(image)*224+pr*14+rr)*224+pc*14+cc)*3+channel;
+                    value=g.images[at];
+                }
+            }else if constexpr(Mode==13){
+                value=static_cast<const float*>(input)[size_t(row)*p.lda+col]
+                      +static_cast<const float*>(p.b)[col]
+                      +static_cast<const float*>(p.c)[size_t(row%256)*p.n+col];
             }
             size_t out=size_t(row)*p.ldo+col;
             if constexpr(Mode==4||Mode==5||Mode==7||Mode==9)static_cast<float*>(p.output)[out]=value;
@@ -164,7 +181,7 @@ template<int Mode> struct NativeTensorOp {
         native_complete(g,s);
     }};
 };
-#define NATIVE_MODEL_KERNEL megakernel::mk<Cfg,NativeModelGlobals,NativeLinearOp,NativeVisionAttentionOp,NativeNormOp,NativeTensorOp<1>,NativeTensorOp<2>,NativeTensorOp<3>,NativeTensorOp<4>,NativeTensorOp<5>,NativeTensorOp<6>,NativeTensorOp<7>,NativeTensorOp<8>,NativeTensorOp<9>,NativeTensorOp<10>,NativeTensorOp<11>,NativeGemmaAttentionOp,NativeSkinnyLinearOp>
+#define NATIVE_MODEL_KERNEL megakernel::mk<Cfg,NativeModelGlobals,NativeLinearOp,NativeVisionAttentionOp,NativeNormOp,NativeTensorOp<1>,NativeTensorOp<2>,NativeTensorOp<3>,NativeTensorOp<4>,NativeTensorOp<5>,NativeTensorOp<6>,NativeTensorOp<7>,NativeTensorOp<8>,NativeTensorOp<9>,NativeTensorOp<10>,NativeTensorOp<11>,NativeGemmaAttentionOp,NativeSkinnyLinearOp,NativeTensorOp<12>,NativeTensorOp<13>>
 struct NativeModelContext {
     NativeModelGlobals globals;int workers,device,count;std::vector<void*> owned;unsigned long long epoch=0;
 };
@@ -194,7 +211,8 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
         scalar[stage]=spec.scalar;
         if(spec.kind==0){
             auto* base=static_cast<DenseContextBase*>(spec.handle);if(!base||base->device!=device||base->fp8)return cudaErrorInvalidValue;
-            const auto& f=static_cast<DenseContext<kittens::bf16>*>(base)->globals;if(!f.bf16_output)return cudaErrorInvalidValue;
+            const auto& f=static_cast<DenseContext<kittens::bf16>*>(base)->globals;
+            if(!f.bf16_output&&(f.bias||f.residual||f.geglu_output||f.gelu_columns||f.rms_factors||f.rope_cos))return cudaErrorInvalidValue;
             rows=f.out.rows();width=f.out.cols();tasks[stage]=f.tasks;opcodes[stage]=f.skinny?16:1;matrices[stage]={f,-1,0,0};
         }else if(spec.kind==1){
             auto* a=static_cast<AttentionContext*>(spec.handle);if(!a||a->device!=device||a->globals.fp16||a->globals.splits!=1)return cudaErrorInvalidValue;
@@ -205,9 +223,9 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
             auto* n=static_cast<NormContext*>(spec.handle);if(!n||n->device!=device||(n->globals.format!=16&&n->globals.format!=17))return cudaErrorInvalidValue;
             norms[stage]=n->globals;rows=n->globals.rows;width=n->globals.width;tasks[stage]=(rows+7)/8;opcodes[stage]=3;
         }else if(spec.kind==3){
-            const auto& p=spec.scalar;if(p.mode<1||p.mode>11||p.m<1||p.n<1||!p.output)return cudaErrorInvalidValue;
+            const auto& p=spec.scalar;if(p.mode<1||p.mode>13||p.m<1||p.n<1||!p.output)return cudaErrorInvalidValue;
             if(p.mode==11&&(bool(p.d)!=bool(p.cache_v)||p.cache_base<0))return cudaErrorInvalidValue;
-            rows=p.m;width=p.n;int tile=p.mode==5||p.mode==6?128:16384;tasks[stage]=(int64_t(rows)*width+tile-1)/tile;opcodes[stage]=p.mode+3;
+            rows=p.m;width=p.n;int tile=p.mode==5||p.mode==6?128:p.mode>=12?4096:16384;tasks[stage]=(int64_t(rows)*width+tile-1)/tile;opcodes[stage]=p.mode+(p.mode>=12?5:3);
         }else return cudaErrorInvalidValue;
         if(tasks[stage]<1)return cudaErrorInvalidValue;
         data[stage]={int(expected.size()),(rows+127)/128};expected.resize(expected.size()+data[stage].bands,0);
@@ -233,7 +251,7 @@ extern "C" int create_native_model(void** handle,int count,const NativeSpec* spe
             auto add=[&](int first,int last){for(int b=first/128;b<=last/128;++b)++bands[b];};
             if(spec.kind==0)add((t/matrices[stage].matrix.n_tiles)*128,std::min(rows-1,(t/matrices[stage].matrix.n_tiles)*128+127));
             else if(spec.kind==2)add(t*8,std::min(rows-1,t*8+7));
-            else if(spec.kind==3){int tile=spec.scalar.mode==5||spec.scalar.mode==6?128:16384;add(int(int64_t(t)*tile/width),int(std::min(int64_t(rows)*width-1,int64_t(t+1)*tile-1)/width));}
+            else if(spec.kind==3){int tile=spec.scalar.mode==5||spec.scalar.mode==6?128:spec.scalar.mode>=12?4096:16384;add(int(int64_t(t)*tile/width),int(std::min(int64_t(rows)*width-1,int64_t(t+1)*tile-1)/width));}
             else{
                 const auto& a=attention[stage];int per=(a.nq+63)/64,row=(t%per)*64,batch=t/(per*a.heads);add(batch*a.nq+row,batch*a.nq+std::min(row+63,a.nq-1));
             }

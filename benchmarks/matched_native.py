@@ -49,6 +49,8 @@ def main():
     parser.add_argument('--workers',type=int,default=148)
     parser.add_argument('--native-variants',nargs='+',choices=('fused','no_gelu','no_skinny','no_qkv','neither'),default=['fused'])
     parser.add_argument('--partitioned',action='store_true',help='Launch vision, prefix, and expert as separate native megakernels')
+    parser.add_argument('--prefix-flash',action='store_true',help='Use one-pass tiled attention in native prefix layers')
+    parser.add_argument('--fast-patch',action='store_true',help='Use native BF16 patch layout and tensor-core projection')
     parser.add_argument('--warmup',type=int,default=2)
     parser.add_argument('--iterations',type=int,default=7)
     parser.add_argument('--seed',type=int,default=101)
@@ -101,7 +103,8 @@ def main():
                                       flow_steps=args.steps,library=args.library,workers=args.workers,
                                       fuse_vision_gelu=variant not in ('no_gelu','neither'),
                                       skinny_expert=variant not in ('no_skinny','neither'),
-                                      fuse_qkv_rope=variant!='no_qkv',partitioned=args.partitioned) as native:
+                                      fuse_qkv_rope=variant!='no_qkv',partitioned=args.partitioned,prefix_flash=args.prefix_flash,
+                                      fast_patch=args.fast_patch) as native:
                 record('native_'+variant+('_partitioned' if args.partitioned else ''),lambda:native.forward(images,state,noise,tokens),
                        {'single_native_kernel':not args.partitioned,'program':native.plan,'component_ranges':native.component_ranges})
                 if args.partitioned:
