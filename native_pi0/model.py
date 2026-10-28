@@ -63,7 +63,7 @@ class NativePi0:
         self.model=model;self.num_views=num_views;self.prompt_len=prompt_len;self.chunk_size=chunk_size;self.flow_steps=flow_steps
         self.precision_policy='bf16_reference';self.workers=workers;self.fuse_vision_gelu=fuse_vision_gelu;self.skinny_expert=skinny_expert;self.fuse_qkv_rope=fuse_qkv_rope;self.partitioned=partitioned;self.prefix_flash=prefix_flash;self.fast_patch=fast_patch;self.device=next(model.parameters()).device
         if self.device.type!='cuda':raise ValueError('Supply a CUDA OpenPI model')
-        self.owners=ExitStack();self.buffers=[];self.weight_buffers={};self.stages=[];self.stage_tasks=[];self.landmarks={};self.handle=C.c_void_p();self.component_handles={};self.producers={};self.cache_producers={};self.opcodes=[];self.stage_cost=[]
+        self.owners=ExitStack();self.buffers=[];self.weight_buffers={};self.stages=[];self.stage_tasks=[];self.landmarks={};self.handle=C.c_void_p();self.component_handles={};self.component_codes={};self.producers={};self.cache_producers={};self.opcodes=[];self.stage_cost=[]
         if library is None:
             library=Path('/tmp/pi0_native_model.so')
             subprocess.run(['nvcc','-O3','-lineinfo','-std=c++20','-arch=sm_100a','-DKITTENS_HOPPER','-DKITTENS_BLACKWELL',
@@ -298,6 +298,7 @@ class NativePi0:
                 error=create(C.byref(handle),len(packed),C.cast(packed,C.c_void_p),code.ctypes.data,self.workers,code.shape[1])
                 if error:raise RuntimeError(f'Native pi0 {name} setup CUDA error {error}')
                 self.component_handles[name]=handle
+                self.component_codes[name]=code
         else:
             specs=(Stage*len(self.stages))(*self.stages)
             error=create(C.byref(self.handle),len(specs),C.cast(specs,C.c_void_p),self.code.ctypes.data,self.workers,self.code.shape[1])
@@ -320,6 +321,17 @@ class NativePi0:
             images.data_ptr(),state.data_ptr(),noise.data_ptr(),tokens.data_ptr())
         if error:raise RuntimeError(f'Native π0 {name or "full"} launch error {error}')
 
+    def read_timings(self,name=None):
+        handle=self.component_handles[name] if name is not None else self.handle
+        code=self.component_codes[name] if name is not None else self.code
+        if not handle.value:raise RuntimeError('Native π0 timing context is closed')
+        timings=np.empty((self.workers,code.shape[1],128),dtype=np.int32)
+        read=self.library.read_native_model_timings
+        read.argtypes=[C.c_void_p,C.c_void_p,C.c_size_t];read.restype=C.c_int
+        error=read(handle,timings.ctypes.data,timings.size)
+        if error:raise RuntimeError(f'Native π0 timing read error {error}')
+        return timings
+
     def close(self):
         if self.handle.value:
             with torch.cuda.device(self.device):error=self.destroy(self.handle)
@@ -329,6 +341,7 @@ class NativePi0:
             with torch.cuda.device(self.device):error=self.destroy(handle)
             if error:raise RuntimeError(f'Native π0 component teardown error {error}')
         self.component_handles.clear()
+        self.component_codes.clear()
         self.owners.close()
 
     def __enter__(self):return self

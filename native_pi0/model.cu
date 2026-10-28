@@ -289,6 +289,13 @@ extern "C" int launch_native_model(void* handle,void* stream,const float* images
     auto g=c.globals;g.epoch=++c.epoch;g.images=images;g.state=state;g.noise=noise;g.tokens=tokens;
     NATIVE_MODEL_KERNEL<<<c.workers,Cfg::NUM_THREADS,Cfg::DYNAMIC_SHARED_MEMORY,static_cast<cudaStream_t>(stream)>>>(g);return cudaGetLastError();
 }
+extern "C" int read_native_model_timings(void* handle,int* output,size_t count){
+    if(!handle||!output)return cudaErrorInvalidValue;
+    auto& c=*static_cast<NativeModelContext*>(handle);
+    size_t expected=size_t(c.workers)*c.globals.instructions.length*Cfg::TIMING_WIDTH;
+    if(count!=expected)return cudaErrorInvalidValue;
+    return cudaMemcpy(output,c.globals.timings.data,count*sizeof(int),cudaMemcpyDeviceToHost);
+}
 extern "C" int destroy_native_model(void* handle){
     if(!handle)return cudaSuccess;auto* c=static_cast<NativeModelContext*>(handle);int device;auto error=cudaGetDevice(&device);
     if(error!=cudaSuccess)return error;if(device!=c->device)return cudaErrorInvalidDevice;

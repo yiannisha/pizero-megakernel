@@ -1,0 +1,489 @@
+{
+  "workload": {
+    "views": 3,
+    "prompt_len": 0,
+    "chunk": 50,
+    "flow_steps": 10,
+    "seed": 101
+  },
+  "gpu": "NVIDIA B200",
+  "parameter_bytes": {
+    "vision": 826831584,
+    "prefix": 5017214976,
+    "expert": 623005696
+  },
+  "timing_note": "VM consumer instruction cycles include dependency waits; active worker counts are exact CTA schedule counts.",
+  "components": {
+    "vision": {
+      "gpu_median_ms": 10.65817642211914,
+      "gpu_samples_ms": [
+        10.668160438537598,
+        10.658656120300293,
+        10.656415939331055,
+        10.65817642211914,
+        10.6627197265625,
+        10.653984069824219,
+        10.657952308654785
+      ],
+      "program": {
+        "workers": 148,
+        "stream_length": 149,
+        "instructions": 20602,
+        "compute_tiles": 23748,
+        "largest_tile_range": 2,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "worker_span_cycles_median": 20219191.0,
+      "operations": {
+        "norm1": {
+          "layers": 27,
+          "active_workers_median": 96,
+          "consumer_cycles_median": 72284
+        },
+        "qkv": {
+          "layers": 27,
+          "active_workers_median": 148,
+          "consumer_cycles_median": 65393
+        },
+        "attention": {
+          "layers": 27,
+          "active_workers_median": 148,
+          "consumer_cycles_median": 123799
+        },
+        "out_projection": {
+          "layers": 27,
+          "active_workers_median": 54,
+          "consumer_cycles_median": 120733
+        },
+        "norm2": {
+          "layers": 27,
+          "active_workers_median": 96,
+          "consumer_cycles_median": 118023
+        },
+        "ffn_up": {
+          "layers": 27,
+          "active_workers_median": 148,
+          "consumer_cycles_median": 155528
+        },
+        "ffn_down": {
+          "layers": 27,
+          "active_workers_median": 54,
+          "consumer_cycles_median": 124386
+        }
+      },
+      "top_stages_by_consumer_cycles": [
+        {
+          "stage": 31,
+          "active_workers": 96,
+          "consumer_cycles_median": 193806,
+          "consumer_cycles_max": 263644,
+          "tasks": 96,
+          "opcode": 3
+        },
+        {
+          "stage": 9,
+          "active_workers": 54,
+          "consumer_cycles_median": 189572,
+          "consumer_cycles_max": 198251,
+          "tasks": 54,
+          "opcode": 1
+        },
+        {
+          "stage": 7,
+          "active_workers": 96,
+          "consumer_cycles_median": 188422,
+          "consumer_cycles_max": 193337,
+          "tasks": 96,
+          "opcode": 3
+        },
+        {
+          "stage": 24,
+          "active_workers": 96,
+          "consumer_cycles_median": 178484,
+          "consumer_cycles_max": 263281,
+          "tasks": 96,
+          "opcode": 3
+        },
+        {
+          "stage": 10,
+          "active_workers": 96,
+          "consumer_cycles_median": 177773,
+          "consumer_cycles_max": 190215,
+          "tasks": 96,
+          "opcode": 3
+        },
+        {
+          "stage": 8,
+          "active_workers": 148,
+          "consumer_cycles_median": 177431,
+          "consumer_cycles_max": 236242,
+          "tasks": 204,
+          "opcode": 1
+        },
+        {
+          "stage": 57,
+          "active_workers": 148,
+          "consumer_cycles_median": 166347,
+          "consumer_cycles_max": 291499,
+          "tasks": 204,
+          "opcode": 1
+        },
+        {
+          "stage": 22,
+          "active_workers": 148,
+          "consumer_cycles_median": 166073,
+          "consumer_cycles_max": 282149,
+          "tasks": 204,
+          "opcode": 1
+        },
+        {
+          "stage": 50,
+          "active_workers": 148,
+          "consumer_cycles_median": 165203,
+          "consumer_cycles_max": 286226,
+          "tasks": 204,
+          "opcode": 1
+        },
+        {
+          "stage": 190,
+          "active_workers": 148,
+          "consumer_cycles_median": 163459,
+          "consumer_cycles_max": 292680,
+          "tasks": 204,
+          "opcode": 1
+        },
+        {
+          "stage": 120,
+          "active_workers": 148,
+          "consumer_cycles_median": 160785,
+          "consumer_cycles_max": 285949,
+          "tasks": 204,
+          "opcode": 1
+        },
+        {
+          "stage": 148,
+          "active_workers": 148,
+          "consumer_cycles_median": 160587,
+          "consumer_cycles_max": 286443,
+          "tasks": 204,
+          "opcode": 1
+        }
+      ]
+    },
+    "prefix": {
+      "gpu_median_ms": 18.681535720825195,
+      "gpu_samples_ms": [
+        18.680288314819336,
+        18.682048797607422,
+        18.681535720825195,
+        18.730911254882812,
+        18.68627166748047,
+        18.678943634033203,
+        18.677791595458984
+      ],
+      "program": {
+        "workers": 148,
+        "stream_length": 95,
+        "instructions": 12932,
+        "compute_tiles": 36528,
+        "largest_tile_range": 11,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "worker_span_cycles_median": 34692682.5,
+      "operations": {
+        "norm1": {
+          "layers": 18,
+          "active_workers_median": 96.0,
+          "consumer_cycles_median": 35271.0
+        },
+        "qkv": {
+          "layers": 18,
+          "active_workers_median": 120.0,
+          "consumer_cycles_median": 192202.0
+        },
+        "attention": {
+          "layers": 17,
+          "active_workers_median": 96,
+          "consumer_cycles_median": 768971
+        },
+        "out_projection": {
+          "layers": 17,
+          "active_workers_median": 96,
+          "consumer_cycles_median": 713438
+        },
+        "norm2": {
+          "layers": 17,
+          "active_workers_median": 96,
+          "consumer_cycles_median": 32853
+        },
+        "ffn_up": {
+          "layers": 17,
+          "active_workers_median": 148,
+          "consumer_cycles_median": 612106
+        },
+        "ffn_down": {
+          "layers": 17,
+          "active_workers_median": 96,
+          "consumer_cycles_median": 367511
+        }
+      },
+      "top_stages_by_consumer_cycles": [
+        {
+          "stage": 225,
+          "active_workers": 96,
+          "consumer_cycles_median": 838758,
+          "consumer_cycles_max": 1428403,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 197,
+          "active_workers": 96,
+          "consumer_cycles_median": 818386,
+          "consumer_cycles_max": 899512,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 260,
+          "active_workers": 96,
+          "consumer_cycles_median": 779987,
+          "consumer_cycles_max": 850132,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 218,
+          "active_workers": 96,
+          "consumer_cycles_median": 775578,
+          "consumer_cycles_max": 848629,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 253,
+          "active_workers": 96,
+          "consumer_cycles_median": 771242,
+          "consumer_cycles_max": 846915,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 288,
+          "active_workers": 96,
+          "consumer_cycles_median": 770328,
+          "consumer_cycles_max": 841001,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 281,
+          "active_workers": 96,
+          "consumer_cycles_median": 770229,
+          "consumer_cycles_max": 840658,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 232,
+          "active_workers": 96,
+          "consumer_cycles_median": 769910,
+          "consumer_cycles_max": 840478,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 246,
+          "active_workers": 96,
+          "consumer_cycles_median": 768971,
+          "consumer_cycles_max": 838460,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 267,
+          "active_workers": 96,
+          "consumer_cycles_median": 768446,
+          "consumer_cycles_max": 839521,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 309,
+          "active_workers": 96,
+          "consumer_cycles_median": 768256,
+          "consumer_cycles_max": 837470,
+          "tasks": 96,
+          "opcode": 15
+        },
+        {
+          "stage": 302,
+          "active_workers": 96,
+          "consumer_cycles_median": 767956,
+          "consumer_cycles_max": 838001,
+          "tasks": 96,
+          "opcode": 15
+        }
+      ]
+    },
+    "expert": {
+      "gpu_median_ms": 152.04153442382812,
+      "gpu_samples_ms": [
+        152.05398559570312,
+        151.97410583496094,
+        152.04153442382812,
+        151.95193481445312,
+        152.05322265625,
+        152.00064086914062,
+        152.06387329101562
+      ],
+      "program": {
+        "workers": 148,
+        "stream_length": 239,
+        "instructions": 28538,
+        "compute_tiles": 33578,
+        "largest_tile_range": 3,
+        "dynamic_fetch": false,
+        "ready_queue": false
+      },
+      "worker_span_cycles_median": 289425518.5,
+      "operations": {
+        "norm1": {
+          "layers": 180,
+          "active_workers_median": 16.0,
+          "consumer_cycles_median": 135448.5
+        },
+        "qkv": {
+          "layers": 180,
+          "active_workers_median": 20.0,
+          "consumer_cycles_median": 84870.5
+        },
+        "attention": {
+          "layers": 180,
+          "active_workers_median": 8.0,
+          "consumer_cycles_median": 1222935.5
+        },
+        "out_projection": {
+          "layers": 180,
+          "active_workers_median": 8.0,
+          "consumer_cycles_median": 1314611.5
+        },
+        "norm2": {
+          "layers": 180,
+          "active_workers_median": 16.0,
+          "consumer_cycles_median": 1379568.0
+        },
+        "ffn_up": {
+          "layers": 180,
+          "active_workers_median": 64.0,
+          "consumer_cycles_median": 1558115.5
+        },
+        "ffn_down": {
+          "layers": 180,
+          "active_workers_median": 8.0,
+          "consumer_cycles_median": 102220.0
+        }
+      },
+      "top_stages_by_consumer_cycles": [
+        {
+          "stage": 358,
+          "active_workers": 8,
+          "consumer_cycles_median": 3826813,
+          "consumer_cycles_max": 6164692,
+          "tasks": 8,
+          "opcode": 16
+        },
+        {
+          "stage": 357,
+          "active_workers": 8,
+          "consumer_cycles_median": 3733964,
+          "consumer_cycles_max": 6101041,
+          "tasks": 8,
+          "opcode": 15
+        },
+        {
+          "stage": 361,
+          "active_workers": 8,
+          "consumer_cycles_median": 3102136,
+          "consumer_cycles_max": 4723504,
+          "tasks": 8,
+          "opcode": 16
+        },
+        {
+          "stage": 330,
+          "active_workers": 8,
+          "consumer_cycles_median": 2917571,
+          "consumer_cycles_max": 2945771,
+          "tasks": 8,
+          "opcode": 16
+        },
+        {
+          "stage": 329,
+          "active_workers": 8,
+          "consumer_cycles_median": 2840799,
+          "consumer_cycles_max": 2876834,
+          "tasks": 8,
+          "opcode": 15
+        },
+        {
+          "stage": 338,
+          "active_workers": 16,
+          "consumer_cycles_median": 2383940,
+          "consumer_cycles_max": 3246770,
+          "tasks": 16,
+          "opcode": 3
+        },
+        {
+          "stage": 710,
+          "active_workers": 148,
+          "consumer_cycles_median": 2041779,
+          "consumer_cycles_max": 16182341,
+          "tasks": 400,
+          "opcode": 8
+        },
+        {
+          "stage": 448,
+          "active_workers": 148,
+          "consumer_cycles_median": 2021511,
+          "consumer_cycles_max": 16231814,
+          "tasks": 400,
+          "opcode": 8
+        },
+        {
+          "stage": 1496,
+          "active_workers": 148,
+          "consumer_cycles_median": 2014755,
+          "consumer_cycles_max": 16369692,
+          "tasks": 400,
+          "opcode": 8
+        },
+        {
+          "stage": 1234,
+          "active_workers": 148,
+          "consumer_cycles_median": 2007629,
+          "consumer_cycles_max": 16179150,
+          "tasks": 400,
+          "opcode": 8
+        },
+        {
+          "stage": 579,
+          "active_workers": 148,
+          "consumer_cycles_median": 1995695,
+          "consumer_cycles_max": 16146810,
+          "tasks": 400,
+          "opcode": 8
+        },
+        {
+          "stage": 841,
+          "active_workers": 148,
+          "consumer_cycles_median": 1992405,
+          "consumer_cycles_max": 16386620,
+          "tasks": 400,
+          "opcode": 8
+        }
+      ]
+    }
+  }
+}
