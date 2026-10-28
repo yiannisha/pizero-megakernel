@@ -1,0 +1,90 @@
+{
+  "results": [
+    {
+      "backend": "realtime-triton",
+      "timestamp_utc": "2026-10-28T15:20:07.481714+00:00",
+      "execution": {
+        "upstream_sm120_optimized": false
+      },
+      "source_sha256": {
+        "benchmarks/__init__.py": "066193817c93605e2365eccf5a83748a11c603d885ed57e83ffaf8575dc14c35",
+        "benchmarks/matched_native.py": "80be2142b000c377f94bd0522aa7c19d0183de29486afe57ea8953acb4d9ba19",
+        "benchmarks/native_primitives.py": "f7db40d0c83b59f28a44221fbd956dce589628dd99b84fc703678664d4e6a47c",
+        "benchmarks/openpi_backend.py": "dcdd72dc3c5d215d1cf5952ba00e6da1987718a001d1ed498d0b617fd52e7b64",
+        "benchmarks/run.py": "c71ecb7b3aa2379aa34ead2a0f6e2a2d3863dbdc70adfef23c2d6f556ae40a4d"
+      },
+      "workload": {
+        "model": "pi0",
+        "batch": 1,
+        "views": 3,
+        "image_size": [
+          224,
+          224
+        ],
+        "prompt_len": 0,
+        "chunk_size": 50,
+        "action_dim": 32,
+        "flow_steps": 10,
+        "seed": 0
+      },
+      "weights": {
+        "openpi": "random_initialized",
+        "triton": "random_initialized"
+      },
+      "scope": "GPU-resident normalized images/state/noise to action chunk; excludes tokenization, transfers, policy transforms",
+      "precision": "upstream BF16; OpenPI FP32 norms/patch embedding/action heads; Triton BF16 with FP32 accumulations",
+      "environment": {
+        "gpu": "NVIDIA B200",
+        "capability": [
+          10,
+          0
+        ],
+        "torch": "2.8.0+cu128",
+        "triton": "3.4.0",
+        "cuda": "12.8",
+        "python": "3.12.3",
+        "upstreams": {
+          "openpi": "215abfb217dbac7d5f1273282331b9b1866c0479",
+          "realtime-vla": "eb46c8d8ccf5216fd4bb71a48429f2da9dcf36a0"
+        }
+      },
+      "warmup": 2,
+      "iterations": 7,
+      "setup_seconds": 23.65170663804747,
+      "peak_allocated_bytes": 5522336256,
+      "validation": {
+        "cross_backend_parity": "not_checked_independent_weights"
+      },
+      "wall": {
+        "median_ms": 21.245658,
+        "p10_ms": 21.2366842,
+        "p90_ms": 21.2852228,
+        "min_ms": 21.236467,
+        "samples_ms": [
+          21.326282,
+          21.245658,
+          21.25785,
+          21.236467,
+          21.253331,
+          21.236829,
+          21.244572
+        ]
+      },
+      "cuda_event": {
+        "median_ms": 21.226335525512695,
+        "p10_ms": 21.218662643432616,
+        "p90_ms": 21.2587459564209,
+        "min_ms": 21.21843147277832,
+        "samples_ms": [
+          21.289119720458984,
+          21.223007202148438,
+          21.238496780395508,
+          21.21843147277832,
+          21.234943389892578,
+          21.21881675720215,
+          21.226335525512695
+        ]
+      }
+    }
+  ]
+}

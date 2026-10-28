@@ -1,0 +1,39 @@
+{
+  "workload": "pi0, 3 views, prompt 0, 50 actions, 10 denoising steps, B200",
+  "native": {
+    "gpu_median_ms": 174.44554138183594,
+    "phase_ms_approx": {
+      "vision": 12.333362751203904,
+      "prefix": 20.7304045880376,
+      "decoder_10_steps": 141.38177404259443
+    },
+    "phase_method": "Hazy VM per-worker timing spans (median cycles: 25221185.5, 42392767.5, 289119522.5), scaled to the uninstrumented full-model GPU median; approximate because profiling changes execution",
+    "matched_openpi_graph_median_ms": 40.225887298583984,
+    "matched_one_step_native_ms": 48.63654327392578,
+    "matched_one_step_openpi_graph_ms": 14.856063842773438,
+    "expert_ctas_per_layer": {
+      "qkv": 20,
+      "attention": 8,
+      "out_projection": 8,
+      "gate_up": 64,
+      "down_projection": 8
+    }
+  },
+  "realtime_vla": {
+    "gpu_median_ms": 21.226335525512695,
+    "phase_ms": {
+      "vision": 2.657599925994873,
+      "prefix": 6.69539213180542,
+      "decoder_10_steps": 11.843040466308594
+    },
+    "phase_method": "CUDA event nodes inside a captured graph, seven replays; total includes input copies and graph overhead",
+    "sm120_optimized_branch": false,
+    "weight_parity_with_native": false,
+    "input_dtype": "BF16"
+  },
+  "comparison": {
+    "native_over_realtime_total_ratio": 8.218354090001244,
+    "decoder_share_of_total_gap_approx": 0.8454471020934342,
+    "caveat": "Realtime-VLA uses independent random weights and its BF16 implementation; numerical equivalence to the native OpenPI-weight model was not established. Phase attribution in the native kernel is approximate."
+  }
+}
