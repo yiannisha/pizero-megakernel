@@ -104,13 +104,13 @@
     "native_pi0/model.py": "68364aca41fd9678572a135487cc79485de0c2647ab8293c90908fe77e243769",
     "native_pi0/native.cu": "f6c58536a8b5f255b42303200798eddd17927eda38b6fc6fa10de4f575bdaddf",
     "native_pi0/program.py": "19bff7f243cf893410e5105ddc2ad4d2e6020e914720a4c0b6018f575a9e7a8e",
-    "native_pi0/attention.cu": "0659ee4331f201b3fed96f9f79b3bc6394ec1accb2c3aa1c162543fa5b406c74",
+    "native_pi0/attention.cu": "c8fdac3d023e166cd2556757ea08904b07649ce5f1ba46d6bf84eabe53216c0c",
     "native_pi0/dense.cu": "6b14d3f8c6b29fe99c6b7861772eb02863228a070d01db240de33c8d56010c5e",
     "native_pi0/norm.cu": "6a8b2fdebe2737f8c00fc1e091df44c211771efa5c504b1af1d3344697777733",
-    "native_pi0/tcgen_probe.cu": "390b854c4f55bfc3020bbf079e646e4394503329b1977c72d10d2b5a2f5c0d5b",
+    "native_pi0/tcgen_probe.cu": "65bd31e9be332a068904a3810ae94641770b3c585db917e93492fab825558b5e",
     "scripts/validate_native_pi0.py": "58c9fa1dcabd7dbf12421df7e2aedf4852d30ac764a9cfecfccff5c08cb665b9"
   },
-  "library_sha256": "68ce6abeb1f57c0a49ce278e69984f528f090ca9f82b4e96f2fbc4d9dc5af345",
+  "library_sha256": "2ac7840d54f75a1d0ea8c54732ffccd0e43260082d4109f903223531ef23452d",
   "native_program": {
     "workers": 148,
     "stream_length": 198,

@@ -174,3 +174,6 @@ the accuracy gate is still open. Isolated native median was 216.2 ms versus
 gain. The one-view, eight-action, one-step version passed Compute Sanitizer
 memcheck and synccheck with zero reported errors. Both validator processes
 still exit on the separate full-action numerical gate.
+The reports were regenerated from an isolated checkout of commit `f9fd3f1`
+with no uncommitted native source changes; the full action error and timing
+were unchanged by that clean rebuild.
