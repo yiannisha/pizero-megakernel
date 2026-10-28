@@ -155,3 +155,22 @@ A direct FP32 comparison of the folded and separate expressions measured
 215.5 ms isolated native median versus 245.2 ms eager OpenPI. Action NRMSE is
 0.03456; the full-model accuracy gate remains open. The reference replay and
 single-launch checks passed in that run.
+
+### Final prefix layer K/V pruning
+
+The last prefix layer supplies K/V to the expert but its attention output and
+FFN are unused. The native setup now packs only its K/V projection weights,
+and a native VM cache instruction copies the rotated K/V into the resident
+cache after the projection and RoPE producers complete. Expert instructions
+still wait on the cache producer's row-band counters. This removes the final
+prefix Q projection, attention, output projection, FFN, and unused final norm
+from the single-launch program.
+
+`results/native_pi0_prefix_kv_only.json` records 79,896 range instructions
+(down from 80,852), 130,426 compute tiles, one native CUDA launch, and
+bit-exact same-input replay. The complete action NRMSE remains 0.03455784;
+the accuracy gate is still open. Isolated native median was 216.2 ms versus
+215.5 ms in the earlier run, so these measurements do not establish a latency
+gain. The one-view, eight-action, one-step version passed Compute Sanitizer
+memcheck and synccheck with zero reported errors. Both validator processes
+still exit on the separate full-action numerical gate.

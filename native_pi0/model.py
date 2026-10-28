@@ -88,7 +88,7 @@ class NativePi0:
         if len(parents)>3:raise ValueError('Too many native tensor sources')
         index=len(self.stages);spec=scalar or Scalar()
         self.stages.append(Stage(kind,handle,spec,(C.c_int*3)(*(parents+[-1]*(3-len(parents))))));self.stage_tasks.append(tasks)
-        self.opcodes.append(1 if kind==0 else (15 if spec.p0 else 2) if kind==1 else 3 if kind==2 else spec.mode+3)
+        self.opcodes.append(1 if kind==0 else (16 if spec.p1 else 15 if spec.p0 else 2) if kind==1 else 3 if kind==2 else spec.mode+3)
         self.stage_cost.append(padded(max(cost,64),64))
         self.producers[output.untyped_storage().data_ptr()]=index
         return index
@@ -129,34 +129,38 @@ class NativePi0:
         angles=pos[:,None]*inverse[None,:];angles=torch.cat((angles,angles),-1)[None]
         out=(angles.cos().to(torch.bfloat16),angles.sin().to(torch.bfloat16));self.buffers.extend(out);return out
 
-    def block(self,x,layer,*,rows,batches,heads,hk,hd,rms,cache=None,prefix=0,rope=None,name):
+    def block(self,x,layer,*,rows,batches,heads,hk,hd,rms,cache=None,prefix=0,rope=None,name,cache_only=False):
         debug=name in ('prefix.0','vision.0');tag='debug.' if rms else 'visiondebug.';logical=batches*rows
         if debug:self.landmarks[tag+'input']=x[:logical]
         residual=x;y=self.norm(x,layer.input_layernorm if rms else layer.layer_norm1,rms=rms)
         if debug:self.landmarks[tag+'norm1']=y[:logical]
         att=layer.self_attn
-        qkv_weight=torch.cat([att.q_proj.weight,att.k_proj.weight,att.v_proj.weight]);self.buffers.append(qkv_weight)
-        qkv_bias=None if att.q_proj.bias is None else torch.cat([att.q_proj.bias,att.k_proj.bias,att.v_proj.bias])
+        projections=([att.k_proj,att.v_proj] if cache_only else [att.q_proj,att.k_proj,att.v_proj])
+        qkv_weight=torch.cat([projection.weight for projection in projections]);self.buffers.append(qkv_weight)
+        qkv_bias=None if projections[0].bias is None else torch.cat([projection.bias for projection in projections])
         if qkv_bias is not None:self.buffers.append(qkv_bias)
         qkv=self.dense(y,qkv_weight,qkv_bias,rows=batches*rows)
-        q=qkv[:batches*rows,:heads*hd].view(batches,rows,heads,hd)
-        k=qkv[:batches*rows,heads*hd:(heads+hk)*hd].view(batches,rows,hk,hd)
-        v=qkv[:batches*rows,(heads+hk)*hd:(heads+2*hk)*hd].view(batches,rows,hk,hd)
+        key_offset=0 if cache_only else heads*hd
+        k=qkv[:batches*rows,key_offset:key_offset+hk*hd].view(batches,rows,hk,hd)
+        v=qkv[:batches*rows,key_offset+hk*hd:key_offset+2*hk*hd].view(batches,rows,hk,hd)
+        q=k if cache_only else qkv[:batches*rows,:heads*hd].view(batches,rows,heads,hd)
         if debug:
             self.landmarks[tag+'q']=q.reshape(logical,-1);self.landmarks[tag+'k']=k.reshape(logical,-1);self.landmarks[tag+'v']=v.reshape(logical,-1)
         if rope is not None:
-            qkv=self.scalar(11,qkv.shape,a=qkv,b=rope[0],c=rope[1],k=batches*rows,p0=(heads+hk)*hd,p1=hd)
-            q=qkv[:batches*rows,:heads*hd].view(batches,rows,heads,hd)
-            k=qkv[:batches*rows,heads*hd:(heads+hk)*hd].view(batches,rows,hk,hd)
-            v=qkv[:batches*rows,(heads+hk)*hd:(heads+2*hk)*hd].view(batches,rows,hk,hd)
-        output=self.tensor((x.shape[0],heads*hd))
+            qkv=self.scalar(11,qkv.shape,a=qkv,b=rope[0],c=rope[1],k=batches*rows,p0=key_offset+hk*hd,p1=hd)
+            k=qkv[:batches*rows,key_offset:key_offset+hk*hd].view(batches,rows,hk,hd)
+            v=qkv[:batches*rows,key_offset+hk*hd:key_offset+2*hk*hd].view(batches,rows,hk,hd)
+            q=k if cache_only else qkv[:batches*rows,:heads*hd].view(batches,rows,heads,hd)
+        output=self.tensor((x.shape[0],(hk if cache_only else heads)*hd))
         op=self.owners.enter_context(ResidentAttention(self.library_path,q,k,v,workers=self.workers,
             splits=1,kv_cache=cache,cached_prefix_rows=prefix,
-            output=output[:batches*rows].view(batches,rows,heads,hd)))
+            output=output[:batches*rows].view(batches,rows,hk if cache_only else heads,hd)))
         cache_key=None if cache is None else cache[0].untyped_storage().data_ptr()
-        index=self.add(1,op.handle.value,batches*heads*((rows+63)//64),Scalar(alpha=op.scale,p0=int(rms)),
+        index=self.add(1,op.handle.value,((batches*rows+63)//64 if cache_only else batches*heads*((rows+63)//64)),
+            Scalar(alpha=op.scale,p0=int(rms),p1=int(cache_only)),
             output=output,inputs=(qkv,),cache_source=self.cache_producers.get(cache_key,-1) if prefix else -1,cost=(rows+prefix)*hd)
         if cache_key is not None and not prefix:self.cache_producers[cache_key]=index
+        if cache_only:return x
         if debug:self.landmarks[tag+'attention']=output[:logical]
         y=self.dense(output,att.o_proj.weight if rms else att.out_proj.weight,att.o_proj.bias if rms else att.out_proj.bias,rows=batches*rows,residual=residual)
         x=y
@@ -194,9 +198,8 @@ class NativePi0:
         prefix_rope=self.rope(prefix_rows,0,256);self.caches=[]
         for i,layer in enumerate(pg.paligemma.language_model.layers):
             cache=tuple(self.tensor((1,prefix_rows+self.chunk_size+1,1,256)) for _ in range(2));self.caches.append(cache)
-            x=self.block(x,layer,rows=prefix_rows,batches=1,heads=8,hk=1,hd=256,rms=True,cache=cache,rope=prefix_rope,name=f'prefix.{i}')
+            x=self.block(x,layer,rows=prefix_rows,batches=1,heads=8,hk=1,hd=256,rms=True,cache=cache,rope=prefix_rope,name=f'prefix.{i}',cache_only=i==17)
             if (i+1)%6==0:print('Native reference: prefix layers',i+1,flush=True)
-        self.norm(x,pg.paligemma.language_model.norm,rms=True)
         state=self.linear32(None,self.model.state_proj,1,slot=2)
         actions=None;suffix_rows=self.chunk_size+1;suffix_rope=self.rope(suffix_rows,prefix_rows,256)
         # Immutable action half of the first time MLP: W_a(W_in noise + b_in)
